@@ -1,7 +1,7 @@
-#include <algorithm>
-
 #include "command_dispatcher.hpp"
 #include "../resp/resp_serializer.hpp"
+
+#include <algorithm>
 
 CommandDispatcher::CommandDispatcher(DataStore &store)
     : m_store(store) {}

@@ -1,3 +1,9 @@
+#include "command/commands.hpp"
+#include "command/command_dispatcher.hpp"
+#include "data_store/data_store.hpp"
+#include "handler/client_handler.hpp"
+#include "socket/socket.hpp"
+
 #include <arpa/inet.h>
 #include <atomic>
 #include <csignal>
@@ -5,12 +11,6 @@
 #include <thread>
 #include <unistd.h>
 #include <vector>
-
-#include "command/register.hpp"
-#include "command/command_dispatcher.hpp"
-#include "data_store/data_store.hpp"
-#include "handler/client_handler.hpp"
-#include "socket/socket.hpp"
 
 int g_server_fd = -1;
 std::atomic<bool> running{true};
@@ -37,7 +37,7 @@ int main(int argc, char *argv[])
 
   DataStore store;
   CommandDispatcher dispatcher(store);
-  register_all_commands(dispatcher);
+  commands::register_all_commands(dispatcher);
 
   std::vector<std::thread> threads;
   while (running)

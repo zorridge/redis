@@ -1,8 +1,8 @@
+#include "socket.hpp"
+
 #include <iostream>
 #include <unistd.h>
 #include <arpa/inet.h>
-
-#include "socket.hpp"
 
 SocketRAII::SocketRAII(int fd) : fd(fd) {}
 SocketRAII::~SocketRAII()
