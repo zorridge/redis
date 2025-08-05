@@ -1,7 +1,7 @@
-#include <iostream>
-
 #include "utils.hpp"
 #include "../resp/resp_value.hpp"
+
+#include <iostream>
 
 void printCommand(const RESPValue &value)
 {

@@ -1,11 +1,11 @@
+#include "client_handler.hpp"
+#include "../resp/resp_parser.hpp"
+#include "../utils/utils.hpp"
+
 #include <iostream>
 #include <string>
 #include <sys/socket.h>
 #include <unistd.h>
-
-#include "client_handler.hpp"
-#include "../resp/resp_parser.hpp"
-#include "../utils/utils.hpp"
 
 void handle_client(SocketRAII client_fd, CommandDispatcher &dispatcher)
 {
