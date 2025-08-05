@@ -1,10 +1,10 @@
 # Redis
 
-> ...but homebrewed (and _slightly_ more fragile) in C++.
+> ... but homebrewed (and _slightly_ more fragile) in C++.
 
 ## ✨ Features
 
-> If you squint, it’s almost Redis
+> If you squint, it’s almost Redis.
 
 ### Commands That (Probably) Work
 
@@ -22,7 +22,7 @@
 
 ## 🚧 Setup
 
-> The part everyone skips anyway
+> The part everyone skips anyway.
 
 ```bash
 # 1. Install vcpkg
@@ -40,3 +40,4 @@ redis-cli -h localhost -p 6379
 ```
 
 > Yes, I am reinventing the wheel. But at least it’s not in JavaScript.
+
