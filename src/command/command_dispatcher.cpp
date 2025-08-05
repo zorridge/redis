@@ -3,7 +3,8 @@
 #include "command_dispatcher.hpp"
 #include "../resp/resp_serializer.hpp"
 
-CommandDispatcher::CommandDispatcher() {}
+CommandDispatcher::CommandDispatcher(DataStore &store)
+    : m_store(store) {}
 
 void CommandDispatcher::register_command(const std::string &cmd, Handler handler)
 {

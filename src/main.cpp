@@ -35,9 +35,9 @@ int main(int argc, char *argv[])
 
   std::cout << "\n\033[35m[Server] Listening on localhost:6379\033[0m\n";
 
-  DataStore data_store;
-  CommandDispatcher dispatcher;
-  register_all_commands(dispatcher, data_store);
+  DataStore store;
+  CommandDispatcher dispatcher(store);
+  register_all_commands(dispatcher);
 
   std::vector<std::thread> threads;
   while (running)
