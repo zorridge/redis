@@ -1,21 +1,20 @@
 #pragma once
 
+#include "types.hpp"
 #include "../resp/resp_value.hpp"
 
 #include <chrono>
 #include <condition_variable>
-#include <deque>
 #include <memory>
 #include <mutex>
 #include <string>
 #include <unordered_map>
-#include <variant>
 #include <vector>
 
 class DataStore
 {
 public:
-  using Value = std::variant<std::string, std::deque<std::string>>;
+  RESPValue type(const std::string &key);
 
   RESPValue set(const std::string &key,
                 const std::string &value,
@@ -29,16 +28,16 @@ public:
   RESPValue lpop(const std::string &key, int64_t count = 1);
   RESPValue blpop(const std::string &key, double timeout_seconds);
 
+  RESPValue xadd(const std::string &key,
+                 const std::string &id,
+                 const StreamEntry &entry);
+
 private:
-  struct Entry
-  {
-    Value value;
-    std::chrono::steady_clock::time_point expire_at; // time_point::max() if no expiry
-  };
   std::unordered_map<std::string, Entry> m_store;
   std::mutex m_mutex;
 
   bool is_expired(const Entry &entry) const;
+  bool parse_stream_id(const std::string &id_str, StreamID &id);
 
   std::unordered_map<std::string, std::shared_ptr<std::condition_variable>> m_key_cvs;
   std::shared_ptr<std::condition_variable> get_cv_for_key(const std::string &key);

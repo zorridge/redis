@@ -10,6 +10,9 @@ namespace commands
     dispatcher.register_command("COMMAND", commands::command);
     dispatcher.register_command("ECHO", commands::echo);
 
+    dispatcher.register_command("TYPE", [&dispatcher](const RESPValue &value) -> RESPValue
+                                { return commands::type(value, dispatcher.get_store()); });
+
     dispatcher.register_command("SET", [&dispatcher](const RESPValue &value) -> RESPValue
                                 { return commands::set(value, dispatcher.get_store()); });
     dispatcher.register_command("GET", [&dispatcher](const RESPValue &value) -> RESPValue
@@ -27,6 +30,9 @@ namespace commands
                                 { return lpop(value, dispatcher.get_store()); });
     dispatcher.register_command("BLPOP", [&dispatcher](const RESPValue &value) -> RESPValue
                                 { return blpop(value, dispatcher.get_store()); });
+
+    dispatcher.register_command("XADD", [&dispatcher](const RESPValue &value) -> RESPValue
+                                { return xadd(value, dispatcher.get_store()); });
   }
 
   RESPValue ping(const RESPValue &value)
@@ -48,6 +54,14 @@ namespace commands
     if (value.array.size() != 2)
       return RESPValue::Error("wrong number of arguments for 'ECHO' command");
     return value.array[1];
+  }
+
+  RESPValue type(const RESPValue &value, DataStore &store)
+  {
+    // TYPE key
+    if (value.array.size() != 2)
+      return RESPValue::Error("wrong number of arguments for 'TYPE' command");
+    return store.type(value.array[1].str);
   }
 
   RESPValue set(const RESPValue &value, DataStore &store)
@@ -189,6 +203,21 @@ namespace commands
     }
 
     return store.blpop(key, timeout);
+  }
+
+  RESPValue xadd(const RESPValue &value, DataStore &store)
+  {
+    // XADD key id field1 value1 [field2 value2 ...]
+    if (value.array.size() < 5 || (value.array.size() - 3) % 2 != 0)
+      return RESPValue::Error("wrong number of arguments for 'XADD' command");
+
+    StreamEntry entry;
+    for (size_t i = 3; i < value.array.size(); i += 2)
+    {
+      entry[value.array[i].str] = value.array[i + 1].str;
+    }
+
+    return store.xadd(value.array[1].str, value.array[2].str, entry);
   }
 }
 
