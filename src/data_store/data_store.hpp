@@ -31,13 +31,16 @@ public:
   RESPValue xadd(const std::string &key,
                  const std::string &id,
                  const StreamEntry &entry);
+  RESPValue xrange(const std::string &key,
+                   const std::string &start_id_str,
+                   const std::string &end_id_str,
+                   int64_t count);
 
 private:
   std::unordered_map<std::string, Entry> m_store;
   std::mutex m_mutex;
 
   bool is_expired(const Entry &entry) const;
-  bool parse_stream_id(const std::string &id_str, StreamID &id);
 
   std::unordered_map<std::string, std::shared_ptr<std::condition_variable>> m_key_cvs;
   std::shared_ptr<std::condition_variable> get_cv_for_key(const std::string &key);

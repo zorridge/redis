@@ -19,20 +19,22 @@ namespace commands
                                 { return commands::get(value, dispatcher.get_store()); });
 
     dispatcher.register_command("LLEN", [&dispatcher](const RESPValue &value) -> RESPValue
-                                { return llen(value, dispatcher.get_store()); });
+                                { return commands::llen(value, dispatcher.get_store()); });
     dispatcher.register_command("RPUSH", [&dispatcher](const RESPValue &value) -> RESPValue
                                 { return commands::rpush(value, dispatcher.get_store()); });
     dispatcher.register_command("LPUSH", [&dispatcher](const RESPValue &value) -> RESPValue
-                                { return lpush(value, dispatcher.get_store()); });
+                                { return commands::lpush(value, dispatcher.get_store()); });
     dispatcher.register_command("LRANGE", [&dispatcher](const RESPValue &value) -> RESPValue
                                 { return commands::lrange(value, dispatcher.get_store()); });
     dispatcher.register_command("LPOP", [&dispatcher](const RESPValue &value) -> RESPValue
-                                { return lpop(value, dispatcher.get_store()); });
+                                { return commands::lpop(value, dispatcher.get_store()); });
     dispatcher.register_command("BLPOP", [&dispatcher](const RESPValue &value) -> RESPValue
-                                { return blpop(value, dispatcher.get_store()); });
+                                { return commands::blpop(value, dispatcher.get_store()); });
 
     dispatcher.register_command("XADD", [&dispatcher](const RESPValue &value) -> RESPValue
-                                { return xadd(value, dispatcher.get_store()); });
+                                { return commands::xadd(value, dispatcher.get_store()); });
+    dispatcher.register_command("XRANGE", [&dispatcher](const RESPValue &value) -> RESPValue
+                                { return commands::xrange(value, dispatcher.get_store()); });
   }
 
   RESPValue ping(const RESPValue &value)
@@ -76,18 +78,18 @@ namespace commands
     }
 
     if (to_upper(value.array[3].str) != "PX")
-      return RESPValue::Error("invalid request");
+      return RESPValue::Error("syntax error");
 
     try
     {
       std::chrono::milliseconds ttl{std::stoll(value.array[4].str)};
       if (ttl.count() <= 0)
-        return RESPValue::Error("invalid PX value");
+        return RESPValue::Error("value must be positive");
       return store.set(value.array[1].str, value.array[2].str, ttl);
     }
     catch (...)
     {
-      return RESPValue::Error("invalid PX value");
+      return RESPValue::Error("value is not an integer");
     }
   }
 
@@ -175,7 +177,7 @@ namespace commands
       }
 
       if (count < 0)
-        return RESPValue::Error("value is out of range, must be positive");
+        return RESPValue::Error("value must be positive");
       if (count == 0)
         return RESPValue::Array({});
     }
@@ -199,7 +201,7 @@ namespace commands
     }
     catch (...)
     {
-      return RESPValue::Error("timeout is not a valid double");
+      return RESPValue::Error("timeout is not a double");
     }
 
     return store.blpop(key, timeout);
@@ -212,12 +214,35 @@ namespace commands
       return RESPValue::Error("wrong number of arguments for 'XADD' command");
 
     StreamEntry entry;
-    for (size_t i = 3; i < value.array.size(); i += 2)
-    {
-      entry[value.array[i].str] = value.array[i + 1].str;
-    }
+    for (size_t i = 3; i < value.array.size(); i++)
+      entry.push_back(value.array[i].str);
 
     return store.xadd(value.array[1].str, value.array[2].str, entry);
+  }
+
+  RESPValue xrange(const RESPValue &value, DataStore &store)
+  {
+    // XRANGE key start end [COUNT count]
+    if (value.array.size() < 4)
+      return RESPValue::Error("wrong number of arguments for 'XRANGE' command");
+
+    int64_t count = -1;
+    if (value.array.size() > 4)
+    {
+      if (value.array.size() != 6 || value.array[4].str != "COUNT")
+        return RESPValue::Error("syntax error");
+
+      try
+      {
+        count = std::stoll(value.array[5].str);
+      }
+      catch (...)
+      {
+        return RESPValue::Error("value is not an integer");
+      }
+    }
+
+    return store.xrange(value.array[1].str, value.array[2].str, value.array[3].str, count);
   }
 }
 

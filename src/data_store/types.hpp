@@ -15,16 +15,28 @@ struct StreamID
   {
     return (ms < other.ms) || (ms == other.ms && seq < other.seq);
   }
+  bool operator>(const StreamID &other) const
+  {
+    return (ms > other.ms) || (ms == other.ms && seq > other.seq);
+  }
   bool operator==(const StreamID &other) const
   {
     return ms == other.ms && seq == other.seq;
+  }
+  bool operator<=(const StreamID &other) const
+  {
+    return *this < other || *this == other;
+  }
+  bool operator>=(const StreamID &other) const
+  {
+    return *this > other || *this == other;
   }
   std::string to_string() const
   {
     return std::to_string(ms) + "-" + std::to_string(seq);
   }
 };
-using StreamEntry = std::unordered_map<std::string, std::string>;
+using StreamEntry = std::vector<std::string>;
 using RedisStream = std::map<StreamID, StreamEntry>;
 
 using RedisString = std::string;

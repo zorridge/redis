@@ -28,4 +28,5 @@ namespace commands
 
   // Stream
   RESPValue xadd(const RESPValue &value, DataStore &store);
+  RESPValue xrange(const RESPValue &value, DataStore &store);
 }
