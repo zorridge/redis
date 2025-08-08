@@ -2,6 +2,8 @@
 
 > ... but homebrewed (and _slightly_ more fragile) in C++.
 
+A project focused on emulating Redis’s high efficiency and performance, utilizing a single-threaded, event-driven architecture with I/O multiplexing (kqueue/epoll) to support concurrent client connections and blocking operations.
+
 ## ✨ Features
 
 > If you squint, it’s almost Redis.
@@ -9,16 +11,24 @@
 ### Commands That (Probably) Work
 
 #### Strings
+> No frills, just vibes.
 * `GET`
 * `SET`
 
 #### Lists
+> Engineered for O(1) at the ends. Engineered for O(¯\\(ツ)/¯) in the middle.
 * `LPUSH`
 * `RPUSH`
 * `LPOP`
 * `LLEN`
 * `LRANGE`
-* `BLPOP` (using conditional variables)
+* `BLPOP`
+
+#### Streams
+> Wait, Redis can do that?
+* `XADD`
+* `XRANGE`
+* `XREAD`
 
 ## 🚧 Setup
 
@@ -40,4 +50,5 @@ redis-cli -h localhost -p 6379
 ```
 
 > Yes, I am reinventing the wheel. But at least it’s not in JavaScript.
+
 
