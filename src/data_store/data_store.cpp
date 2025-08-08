@@ -63,7 +63,7 @@ RESPValue DataStore::get(const std::string &key)
     std::vector<RESPValue> arr;
     for (const auto &s : *deq)
       arr.push_back(RESPValue::BulkString(s));
-    return RESPValue::Array(arr);
+    return RESPValue::Array(std::move(arr));
   }
 
   return RESPValue::Null();

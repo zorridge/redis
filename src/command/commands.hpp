@@ -27,7 +27,7 @@ namespace commands
   RESPValue blpop(const RESPValue &value, DataStore &store);
 
   // Stream
-  RESPValue xadd(const RESPValue &value, DataStore &store);
+  RESPValue xadd(const RESPValue &value, DataStore &store, int client_fd, std::list<int> &ready_list);
   RESPValue xrange(const RESPValue &value, DataStore &store);
-  RESPValue xread(const RESPValue &value, DataStore &store);
+  RESPValue xread(const RESPValue &value, DataStore &store, int client_fd, std::list<int> &ready_list);
 }

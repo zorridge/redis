@@ -123,7 +123,7 @@ RESPValue DataStore::lrange(const std::string &key, int64_t start, int64_t stop)
     std::vector<RESPValue> result;
     for (int64_t i = start; i <= stop && i < len; ++i)
       result.push_back(RESPValue::BulkString((*deq)[i]));
-    return RESPValue::Array(result);
+    return RESPValue::Array(std::move(result));
   }
   else
   {
@@ -158,7 +158,7 @@ RESPValue DataStore::lpop(const std::string &key, int64_t count)
     if (count == 1)
       return popped[0];
     else
-      return RESPValue::Array(popped);
+      return RESPValue::Array(std::move(popped));
   }
   else
   {

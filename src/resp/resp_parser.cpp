@@ -142,5 +142,5 @@ RESPValue RESPParser::parse_array(size_t &pos)
     arr.push_back(v);
   }
 
-  return RESPValue::Array(arr);
+  return RESPValue::Array(std::move(arr));
 }

@@ -6,37 +6,38 @@ namespace commands
 {
   void register_all_commands(CommandDispatcher &dispatcher)
   {
-    dispatcher.register_command("PING", commands::ping);
-    dispatcher.register_command("COMMAND", commands::command);
-    dispatcher.register_command("ECHO", commands::echo);
+    auto adapt = [&dispatcher](auto func)
+    {
+      return [func, &dispatcher](const RESPValue &value, int, std::list<int> &) -> RESPValue
+      {
+        return func(value, dispatcher.get_store());
+      };
+    };
 
-    dispatcher.register_command("TYPE", [&dispatcher](const RESPValue &value) -> RESPValue
-                                { return commands::type(value, dispatcher.get_store()); });
+    dispatcher.register_command("PING", [](const RESPValue &value, int, std::list<int> &) -> RESPValue
+                                { return commands::ping(value); });
+    dispatcher.register_command("COMMAND", [](const RESPValue &value, int, std::list<int> &) -> RESPValue
+                                { return commands::command(value); });
+    dispatcher.register_command("ECHO", [](const RESPValue &value, int, std::list<int> &) -> RESPValue
+                                { return commands::echo(value); });
 
-    dispatcher.register_command("SET", [&dispatcher](const RESPValue &value) -> RESPValue
-                                { return commands::set(value, dispatcher.get_store()); });
-    dispatcher.register_command("GET", [&dispatcher](const RESPValue &value) -> RESPValue
-                                { return commands::get(value, dispatcher.get_store()); });
+    dispatcher.register_command("TYPE", adapt(commands::type));
 
-    dispatcher.register_command("LLEN", [&dispatcher](const RESPValue &value) -> RESPValue
-                                { return commands::llen(value, dispatcher.get_store()); });
-    dispatcher.register_command("RPUSH", [&dispatcher](const RESPValue &value) -> RESPValue
-                                { return commands::rpush(value, dispatcher.get_store()); });
-    dispatcher.register_command("LPUSH", [&dispatcher](const RESPValue &value) -> RESPValue
-                                { return commands::lpush(value, dispatcher.get_store()); });
-    dispatcher.register_command("LRANGE", [&dispatcher](const RESPValue &value) -> RESPValue
-                                { return commands::lrange(value, dispatcher.get_store()); });
-    dispatcher.register_command("LPOP", [&dispatcher](const RESPValue &value) -> RESPValue
-                                { return commands::lpop(value, dispatcher.get_store()); });
-    dispatcher.register_command("BLPOP", [&dispatcher](const RESPValue &value) -> RESPValue
-                                { return commands::blpop(value, dispatcher.get_store()); });
+    dispatcher.register_command("SET", adapt(commands::set));
+    dispatcher.register_command("GET", adapt(commands::get));
 
-    dispatcher.register_command("XADD", [&dispatcher](const RESPValue &value) -> RESPValue
-                                { return commands::xadd(value, dispatcher.get_store()); });
-    dispatcher.register_command("XRANGE", [&dispatcher](const RESPValue &value) -> RESPValue
-                                { return commands::xrange(value, dispatcher.get_store()); });
-    dispatcher.register_command("XREAD", [&dispatcher](const RESPValue &value) -> RESPValue
-                                { return commands::xread(value, dispatcher.get_store()); });
+    dispatcher.register_command("LLEN", adapt(commands::llen));
+    dispatcher.register_command("RPUSH", adapt(commands::rpush));
+    dispatcher.register_command("LPUSH", adapt(commands::lpush));
+    dispatcher.register_command("LRANGE", adapt(commands::lrange));
+    dispatcher.register_command("LPOP", adapt(commands::lpop));
+    dispatcher.register_command("BLPOP", adapt(commands::blpop));
+
+    dispatcher.register_command("XADD", [&dispatcher](const RESPValue &value, int fd, std::list<int> &list) -> RESPValue
+                                { return commands::xadd(value, dispatcher.get_store(), fd, list); });
+    dispatcher.register_command("XRANGE", adapt(commands::xrange));
+    dispatcher.register_command("XREAD", [&dispatcher](const RESPValue &value, int fd, std::list<int> &list) -> RESPValue
+                                { return commands::xread(value, dispatcher.get_store(), fd, list); });
   }
 
   RESPValue ping(const RESPValue &value)
@@ -209,7 +210,7 @@ namespace commands
     return store.blpop(key, timeout);
   }
 
-  RESPValue xadd(const RESPValue &value, DataStore &store)
+  RESPValue xadd(const RESPValue &value, DataStore &store, int client_fd, std::list<int> &ready_list)
   {
     // XADD key id field1 value1 [field2 value2 ...]
     if (value.array.size() < 5 || (value.array.size() - 3) % 2 != 0)
@@ -219,7 +220,19 @@ namespace commands
     for (size_t i = 3; i < value.array.size(); i++)
       entry.push_back(value.array[i].str);
 
-    return store.xadd(value.array[1].str, value.array[2].str, entry);
+    const std::string &key = value.array[1].str;
+    const std::string &id_str = value.array[2].str;
+    RESPValue result = store.xadd(key, id_str, entry);
+
+    if (result.type != RESPValue::Type::Error)
+    {
+      auto unblocked_fds = store.get_blocking_manager().unblock_clients_for_key(key);
+      // Let main loop re-process unblocked clients
+      for (int fd : unblocked_fds)
+        ready_list.push_back(fd);
+    }
+
+    return result;
   }
 
   RESPValue xrange(const RESPValue &value, DataStore &store)
@@ -247,14 +260,30 @@ namespace commands
     return store.xrange(value.array[1].str, value.array[2].str, value.array[3].str, count);
   }
 
-  RESPValue xread(const RESPValue &value, DataStore &store)
+  RESPValue xread(const RESPValue &value, DataStore &store, int client_fd, std::list<int> &ready_list)
   {
     // Basic: XREAD STREAMS key id
     // Full: XREAD [COUNT count] [BLOCK ms] STREAMS key [key ...] id [id ...]
+    int64_t block_ms = -1;
     size_t streams_pos = 0;
     for (size_t i = 1; i < value.array.size(); ++i)
     {
-      if (to_upper(value.array[i].str) == "STREAMS")
+      std::string opt = to_upper(value.array[i].str);
+      if (opt == "BLOCK")
+      {
+        if (i + 1 >= value.array.size())
+          return RESPValue::Error("syntax error");
+        try
+        {
+          block_ms = std::stoll(value.array[i + 1].str);
+        }
+        catch (...)
+        {
+          return RESPValue::Error("timeout is not an integer");
+        }
+        i++;
+      }
+      else if (opt == "STREAMS")
       {
         streams_pos = i;
         break;
@@ -277,11 +306,49 @@ namespace commands
     // The first half are keys, the second half are IDs
     for (size_t i = 0; i < num_streams; ++i)
     {
-      keys.push_back(value.array[streams_pos + 1 + i].str);
-      ids.push_back(value.array[streams_pos + 1 + num_streams + i].str);
+      const std::string &key = value.array[streams_pos + 1 + i].str;
+      const std::string &id_str = value.array[streams_pos + 1 + num_streams + i].str;
+
+      keys.push_back(key);
+      if (id_str == "$")
+      {
+        const std::string &key_for_this_id = keys[i];
+        auto last_id_opt = store.get_last_stream_id(key);
+        if (last_id_opt)
+          ids.push_back(last_id_opt->to_string());
+        else
+          ids.push_back("0-0");
+      }
+      else
+        ids.push_back(id_str);
     }
 
-    return store.xread(keys, ids);
+    RESPValue result = store.xread(keys, ids, block_ms, client_fd);
+
+    if (result.type == RESP_BLOCK_CLIENT.type && result.str == RESP_BLOCK_CLIENT.str)
+    {
+      std::vector<RESPValue> commands;
+      commands.reserve(value.array.size());
+
+      // XREAD [COUNT count] [BLOCK ms] STREAMS
+      for (size_t i = 0; i <= streams_pos; ++i)
+        commands.push_back(value.array[i]);
+
+      // key [key ...] id [id ...]
+      for (int i = 0; i < num_streams; ++i)
+      {
+        commands.push_back(RESPValue::BulkString(keys[i]));
+        commands.push_back(RESPValue::BulkString(ids[i]));
+      }
+
+      RESPValue resolved_command = RESPValue::Array(std::move(commands));
+      return RESPValue::Array({
+          std::move(result),          // Signal
+          std::move(resolved_command) // Command to save
+      });
+    }
+
+    return result;
   }
 }
 

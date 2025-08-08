@@ -14,7 +14,7 @@ public:
   SocketRAII(SocketRAII &&other) noexcept;
   SocketRAII &operator=(SocketRAII &&other) noexcept;
 
-  int get() const;
+  int get() const { return fd; }
   operator int() const;
 
 private:

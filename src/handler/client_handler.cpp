@@ -1,5 +1,6 @@
 #include "client_handler.hpp"
-#include "../utils/utils.hpp"
+#include "../resp/resp_serializer.hpp"
+#include "../data_store/data_store.hpp"
 
 #include <iostream>
 #include <sys/socket.h>
@@ -7,7 +8,7 @@
 
 ClientHandler::ClientHandler(int client_fd) : m_client_fd(client_fd) {}
 
-void ClientHandler::handle_read(CommandDispatcher &dispatcher)
+void ClientHandler::handle_read(CommandDispatcher &dispatcher, std::list<int> &ready_list)
 {
   constexpr size_t BUFFER_SIZE = 4096;
   char buffer[BUFFER_SIZE];
@@ -26,12 +27,43 @@ void ClientHandler::handle_read(CommandDispatcher &dispatcher)
   {
     std::string response = "-" + value.str + "\r\n";
     send(m_client_fd.get(), response.c_str(), response.size(), 0);
+    return;
   }
-  else
-  {
-    printCommand(value);
 
-    std::string response = dispatcher.dispatch(value);
-    send(m_client_fd.get(), response.c_str(), response.size(), 0);
+  RESPValue result = dispatcher.dispatch(value, m_client_fd.get(), ready_list);
+
+  if (result.type == RESPValue::Type::Array &&
+      result.array.size() == 2 &&
+      result.array[0].type == RESPValue::Type::SimpleString &&
+      result.array[0].str == "__BLOCK__")
+  {
+    std::cout << "\033[33m[Client " << m_client_fd.get() << "] Blocked\033[0m\n";
+    m_blocked_command = std::move(result.array[1]);
+    return;
   }
+
+  std::string response = RESPSerializer::serialize(result);
+  send(m_client_fd.get(), response.c_str(), response.size(), 0);
+}
+
+void ClientHandler::handle_reprocess(CommandDispatcher &dispatcher, std::list<int> &ready_list)
+{
+  if (!m_blocked_command.has_value())
+    return;
+
+  std::cout << "\033[33m[Client " << m_client_fd.get() << "] Reprocessing\033[0m\n";
+
+  RESPValue value = std::move(m_blocked_command.value());
+  m_blocked_command.reset();
+
+  RESPValue result = dispatcher.dispatch(value, m_client_fd.get(), ready_list);
+  if (result.type == RESP_BLOCK_CLIENT.type && result.str == RESP_BLOCK_CLIENT.str)
+  {
+    std::cout << "\033[33m[Client " << m_client_fd.get() << "] Re-blocked\033[0m\n";
+    m_blocked_command = std::move(value);
+    return;
+  }
+
+  std::string response = RESPSerializer::serialize(result);
+  send(m_client_fd.get(), response.c_str(), response.size(), 0);
 }

@@ -14,7 +14,6 @@ SocketRAII::~SocketRAII()
     close(fd);
 }
 
-int SocketRAII::get() const { return fd; }
 SocketRAII::operator int() const { return fd; }
 
 SocketRAII::SocketRAII(SocketRAII &&other) noexcept : fd(other.fd) { other.fd = -1; }

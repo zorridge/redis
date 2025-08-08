@@ -81,17 +81,19 @@ RESPValue DataStore::xrange(const std::string &key,
       entry_fields.push_back(RESPValue::BulkString(s));
 
     results.push_back(RESPValue::Array({RESPValue::BulkString(iter->first.to_string()),
-                                        RESPValue::Array(entry_fields)}));
+                                        RESPValue::Array(std::move(entry_fields))}));
 
     if (count > 0 && static_cast<int64_t>(results.size()) >= count)
       break;
   }
 
-  return RESPValue::Array(results);
+  return RESPValue::Array(std::move(results));
 }
 
 RESPValue DataStore::xread(const std::vector<std::string> &keys,
-                           const std::vector<std::string> &ids)
+                           const std::vector<std::string> &ids,
+                           int64_t block_ms,
+                           int client_fd)
 {
   std::lock_guard<std::mutex> lock(m_mutex);
 
@@ -123,18 +125,39 @@ RESPValue DataStore::xread(const std::vector<std::string> &keys,
         entry_fields.push_back(RESPValue::BulkString(s));
 
       results.push_back(RESPValue::Array({RESPValue::BulkString(iter->first.to_string()),
-                                          RESPValue::Array(entry_fields)}));
+                                          RESPValue::Array(std::move(entry_fields))}));
     }
 
     if (!results.empty())
       all_results.push_back(RESPValue::Array({RESPValue::BulkString(key),
-                                              RESPValue::Array(results)}));
+                                              RESPValue::Array(std::move(results))}));
   }
 
-  if (all_results.empty())
-    return RESPValue::Null();
+  // Return immediately if result is found during non-blocking pass
+  if (!all_results.empty())
+    return RESPValue::Array(std::move(all_results));
 
-  return RESPValue::Array(all_results);
+  if (block_ms >= 0)
+  {
+    // Register this client as waiting
+    m_blocking_manager.block_client(client_fd, keys, block_ms);
+    return RESP_BLOCK_CLIENT; // return special signal
+  }
+
+  return RESPValue::Null(); // no data and non-blocking
+}
+
+std::optional<StreamID> DataStore::get_last_stream_id(const std::string &key) const
+{
+  auto it = m_store.find(key);
+  if (it == m_store.end() || is_expired(it->second))
+    return std::nullopt;
+
+  const RedisStream *stream = std::get_if<RedisStream>(&it->second.value);
+  if (!stream || stream->empty())
+    return std::nullopt;
+
+  return stream->rbegin()->first;
 }
 
 bool parse_stream_id(const std::string &id_str,
