@@ -3,19 +3,20 @@
 #include "../resp/resp_value.hpp"
 #include "../data_store/data_store.hpp"
 
+#include <functional>
 #include <string>
 #include <unordered_map>
-#include <functional>
+#include <list>
 
 class CommandDispatcher
 {
 public:
-  using Handler = std::function<RESPValue(const RESPValue &)>;
+  using Handler = std::function<RESPValue(const RESPValue &, int, std::list<int> &)>;
 
   CommandDispatcher(DataStore &store);
 
   void register_command(const std::string &cmd, Handler handler);
-  std::string dispatch(const RESPValue &value) const;
+  RESPValue dispatch(const RESPValue &value, int client_fd, std::list<int> &ready_list) const;
 
   DataStore &get_store() { return m_store; }
 

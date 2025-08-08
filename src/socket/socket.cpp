@@ -4,13 +4,18 @@
 #include <unistd.h>
 #include <arpa/inet.h>
 
+constexpr int PORT = 6379;
+constexpr int CONNECTION_BACKLOG = 5;
+
 SocketRAII::SocketRAII(int fd) : fd(fd) {}
 SocketRAII::~SocketRAII()
 {
   if (fd >= 0)
     close(fd);
 }
+
 SocketRAII::operator int() const { return fd; }
+
 SocketRAII::SocketRAII(SocketRAII &&other) noexcept : fd(other.fd) { other.fd = -1; }
 SocketRAII &SocketRAII::operator=(SocketRAII &&other) noexcept
 {

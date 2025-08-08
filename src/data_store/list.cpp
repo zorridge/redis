@@ -26,7 +26,7 @@ RESPValue DataStore::llen(const std::string &key)
   if (it == m_store.end() || is_expired(it->second))
     return RESPValue::Integer(0);
 
-  if (auto *deq = std::get_if<std::deque<std::string>>(&it->second.value))
+  if (auto *deq = std::get_if<RedisList>(&it->second.value))
   {
     return RESPValue::Integer(deq->size());
   }
@@ -44,14 +44,14 @@ RESPValue DataStore::rpush(const std::string &key, const std::vector<std::string
   if (it == m_store.end() || is_expired(it->second))
   {
     // Key doesn't exist or expired: create new list
-    m_store[key] = Entry{std::deque<std::string>(values.begin(), values.end()),
-                         std::chrono::steady_clock::time_point::max()};
+    m_store.insert_or_assign(key, Entry(RedisList{values.begin(), values.end()},
+                                        std::chrono::steady_clock::time_point::max()));
 
     notify_list_push(key); // Notify waiters: list is now non-empty
     return RESPValue::Integer(values.size());
   }
 
-  if (auto *deq = std::get_if<std::deque<std::string>>(&it->second.value))
+  if (auto *deq = std::get_if<RedisList>(&it->second.value))
   {
     bool was_empty = deq->empty();
     deq->insert(deq->end(), values.begin(), values.end());
@@ -75,14 +75,14 @@ RESPValue DataStore::lpush(const std::string &key, const std::vector<std::string
   if (it == m_store.end() || is_expired(it->second))
   {
     // Key doesn't exist or expired: create new list
-    m_store[key] = Entry{std::deque<std::string>(values.rbegin(), values.rend()),
-                         std::chrono::steady_clock::time_point::max()};
+    m_store.insert_or_assign(key, Entry(RedisList{values.rbegin(), values.rend()},
+                                        std::chrono::steady_clock::time_point::max()));
 
     notify_list_push(key); // Notify waiters: list is now non-empty
     return RESPValue::Integer(values.size());
   }
 
-  if (auto *deq = std::get_if<std::deque<std::string>>(&it->second.value))
+  if (auto *deq = std::get_if<RedisList>(&it->second.value))
   {
     bool was_empty = deq->empty();
     deq->insert(deq->begin(), values.rbegin(), values.rend());
@@ -106,7 +106,7 @@ RESPValue DataStore::lrange(const std::string &key, int64_t start, int64_t stop)
   if (it == m_store.end() || is_expired(it->second))
     return RESPValue::Array({});
 
-  if (auto *deq = std::get_if<std::deque<std::string>>(&it->second.value))
+  if (auto *deq = std::get_if<RedisList>(&it->second.value))
   {
     int64_t len = static_cast<int64_t>(deq->size());
     if (start < 0)
@@ -123,7 +123,7 @@ RESPValue DataStore::lrange(const std::string &key, int64_t start, int64_t stop)
     std::vector<RESPValue> result;
     for (int64_t i = start; i <= stop && i < len; ++i)
       result.push_back(RESPValue::BulkString((*deq)[i]));
-    return RESPValue::Array(result);
+    return RESPValue::Array(std::move(result));
   }
   else
   {
@@ -139,7 +139,7 @@ RESPValue DataStore::lpop(const std::string &key, int64_t count)
   if (it == m_store.end() || is_expired(it->second))
     return RESPValue::Null();
 
-  if (auto *deq = std::get_if<std::deque<std::string>>(&it->second.value))
+  if (auto *deq = std::get_if<RedisList>(&it->second.value))
   {
     // Clamp count to list size
     int64_t actual = std::min<int64_t>(count, deq->size());
@@ -158,7 +158,7 @@ RESPValue DataStore::lpop(const std::string &key, int64_t count)
     if (count == 1)
       return popped[0];
     else
-      return RESPValue::Array(popped);
+      return RESPValue::Array(std::move(popped));
   }
   else
   {
@@ -175,7 +175,7 @@ RESPValue DataStore::blpop(const std::string &key, double timeout_seconds)
     auto it = m_store.find(key);
     if (it != m_store.end() && !is_expired(it->second))
     {
-      if (auto *deq = std::get_if<std::deque<std::string>>(&it->second.value))
+      if (auto *deq = std::get_if<RedisList>(&it->second.value))
       {
         if (!deq->empty())
         {

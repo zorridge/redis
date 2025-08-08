@@ -12,13 +12,22 @@ namespace commands
   RESPValue command(const RESPValue &value);
   RESPValue echo(const RESPValue &value);
 
+  RESPValue type(const RESPValue &value, DataStore &store);
+
+  // String
   RESPValue set(const RESPValue &value, DataStore &store);
   RESPValue get(const RESPValue &value, DataStore &store);
 
+  // List
   RESPValue llen(const RESPValue &value, DataStore &store);
   RESPValue rpush(const RESPValue &value, DataStore &store);
   RESPValue lpush(const RESPValue &value, DataStore &store);
   RESPValue lrange(const RESPValue &value, DataStore &store);
   RESPValue lpop(const RESPValue &value, DataStore &store);
   RESPValue blpop(const RESPValue &value, DataStore &store);
+
+  // Stream
+  RESPValue xadd(const RESPValue &value, DataStore &store, int client_fd, std::list<int> &ready_list);
+  RESPValue xrange(const RESPValue &value, DataStore &store);
+  RESPValue xread(const RESPValue &value, DataStore &store, int client_fd, std::list<int> &ready_list);
 }

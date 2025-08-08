@@ -1,41 +1,69 @@
 #include "client_handler.hpp"
-#include "../resp/resp_parser.hpp"
-#include "../utils/utils.hpp"
+#include "../resp/resp_serializer.hpp"
+#include "../data_store/data_store.hpp"
 
 #include <iostream>
-#include <string>
 #include <sys/socket.h>
 #include <unistd.h>
 
-void handle_client(SocketRAII client_fd, CommandDispatcher &dispatcher)
+ClientHandler::ClientHandler(int client_fd) : m_client_fd(client_fd) {}
+
+void ClientHandler::handle_read(CommandDispatcher &dispatcher, std::list<int> &ready_list)
 {
   constexpr size_t BUFFER_SIZE = 4096;
   char buffer[BUFFER_SIZE];
 
-  RESPParser parser;
+  ssize_t bytes_received = recv(m_client_fd.get(), buffer, BUFFER_SIZE, 0);
 
-  std::cout << "\033[33m[Client] Connected\033[0m\n";
-  while (true)
+  // Disconnection is handled by EV_EOF in the main event loop
+  // 0 bytes received also indicates disconnection
+  // So we will simply return and let main handle the clean up
+  if (bytes_received <= 0)
+    return;
+
+  m_parser.feed(buffer, bytes_received);
+  RESPValue value = m_parser.parse();
+  if (value.type == RESPValue::Type::Error)
   {
-    ssize_t bytes_received = recv(client_fd, buffer, BUFFER_SIZE - 1, 0);
-    if (bytes_received <= 0)
-      break;
-
-    parser.feed(buffer, bytes_received);
-    RESPValue value = parser.parse();
-
-    if (value.type == RESPValue::Type::Error)
-    {
-      std::string response = "-" + value.str + "\r\n";
-      send(client_fd, response.c_str(), response.size(), 0);
-      break;
-    }
-
-    printCommand(value);
-
-    std::string response = dispatcher.dispatch(value);
-    send(client_fd, response.c_str(), response.size(), 0);
+    std::string response = "-" + value.str + "\r\n";
+    send(m_client_fd.get(), response.c_str(), response.size(), 0);
+    return;
   }
 
-  std::cout << "\033[33m[Client] Exiting\033[0m\n";
+  RESPValue result = dispatcher.dispatch(value, m_client_fd.get(), ready_list);
+
+  if (result.type == RESPValue::Type::Array &&
+      result.array.size() == 2 &&
+      result.array[0].type == RESPValue::Type::SimpleString &&
+      result.array[0].str == "__BLOCK__")
+  {
+    std::cout << "\033[33m[Client " << m_client_fd.get() << "] Blocked\033[0m\n";
+    m_blocked_command = std::move(result.array[1]);
+    return;
+  }
+
+  std::string response = RESPSerializer::serialize(result);
+  send(m_client_fd.get(), response.c_str(), response.size(), 0);
+}
+
+void ClientHandler::handle_reprocess(CommandDispatcher &dispatcher, std::list<int> &ready_list)
+{
+  if (!m_blocked_command.has_value())
+    return;
+
+  std::cout << "\033[33m[Client " << m_client_fd.get() << "] Reprocessing\033[0m\n";
+
+  RESPValue value = std::move(m_blocked_command.value());
+  m_blocked_command.reset();
+
+  RESPValue result = dispatcher.dispatch(value, m_client_fd.get(), ready_list);
+  if (result.type == RESP_BLOCK_CLIENT.type && result.str == RESP_BLOCK_CLIENT.str)
+  {
+    std::cout << "\033[33m[Client " << m_client_fd.get() << "] Re-blocked\033[0m\n";
+    m_blocked_command = std::move(value);
+    return;
+  }
+
+  std::string response = RESPSerializer::serialize(result);
+  send(m_client_fd.get(), response.c_str(), response.size(), 0);
 }
