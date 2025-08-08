@@ -35,6 +35,8 @@ namespace commands
                                 { return commands::xadd(value, dispatcher.get_store()); });
     dispatcher.register_command("XRANGE", [&dispatcher](const RESPValue &value) -> RESPValue
                                 { return commands::xrange(value, dispatcher.get_store()); });
+    dispatcher.register_command("XREAD", [&dispatcher](const RESPValue &value) -> RESPValue
+                                { return commands::xread(value, dispatcher.get_store()); });
   }
 
   RESPValue ping(const RESPValue &value)
@@ -243,6 +245,43 @@ namespace commands
     }
 
     return store.xrange(value.array[1].str, value.array[2].str, value.array[3].str, count);
+  }
+
+  RESPValue xread(const RESPValue &value, DataStore &store)
+  {
+    // Basic: XREAD STREAMS key id
+    // Full: XREAD [COUNT count] [BLOCK ms] STREAMS key [key ...] id [id ...]
+    size_t streams_pos = 0;
+    for (size_t i = 1; i < value.array.size(); ++i)
+    {
+      if (to_upper(value.array[i].str) == "STREAMS")
+      {
+        streams_pos = i;
+        break;
+      }
+    }
+
+    if (streams_pos == 0)
+      return RESPValue::Error("must be called with the STREAMS keyword");
+
+    size_t args_after_streams = value.array.size() - (streams_pos + 1);
+    if (args_after_streams == 0 || args_after_streams % 2 != 0)
+      return RESPValue::Error("keys and IDs must be provided in pairs");
+
+    size_t num_streams = args_after_streams / 2;
+    std::vector<std::string> keys;
+    std::vector<std::string> ids;
+    keys.reserve(num_streams);
+    ids.reserve(num_streams);
+
+    // The first half are keys, the second half are IDs
+    for (size_t i = 0; i < num_streams; ++i)
+    {
+      keys.push_back(value.array[streams_pos + 1 + i].str);
+      ids.push_back(value.array[streams_pos + 1 + num_streams + i].str);
+    }
+
+    return store.xread(keys, ids);
   }
 }
 

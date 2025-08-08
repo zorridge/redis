@@ -1,14 +1,10 @@
 #pragma once
 
-constexpr int PORT = 6379;
-constexpr int CONNECTION_BACKLOG = 5;
-
 struct SocketRAII
 {
-  int fd;
-  explicit SocketRAII(int fd);
+public:
+  explicit SocketRAII(int fd = -1);
   ~SocketRAII();
-  operator int() const;
 
   // Disable copy
   SocketRAII(const SocketRAII &) = delete;
@@ -17,6 +13,12 @@ struct SocketRAII
   // Enable move
   SocketRAII(SocketRAII &&other) noexcept;
   SocketRAII &operator=(SocketRAII &&other) noexcept;
+
+  int get() const;
+  operator int() const;
+
+private:
+  int fd;
 };
 
 int set_up();

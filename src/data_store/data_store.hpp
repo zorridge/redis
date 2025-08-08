@@ -35,6 +35,8 @@ public:
                    const std::string &start_id_str,
                    const std::string &end_id_str,
                    int64_t count);
+  RESPValue xread(const std::vector<std::string> &keys,
+                  const std::vector<std::string> &ids);
 
 private:
   std::unordered_map<std::string, Entry> m_store;

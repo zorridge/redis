@@ -90,12 +90,70 @@ RESPValue DataStore::xrange(const std::string &key,
   return RESPValue::Array(results);
 }
 
+RESPValue DataStore::xread(const std::vector<std::string> &keys,
+                           const std::vector<std::string> &ids)
+{
+  std::lock_guard<std::mutex> lock(m_mutex);
+
+  std::vector<RESPValue> all_results;
+  for (size_t i = 0; i < keys.size(); ++i)
+  {
+    const std::string &key = keys[i];
+    const std::string &start_id_str = ids[i];
+
+    auto it = m_store.find(key);
+    if (it == m_store.end() || is_expired(it->second))
+      continue;
+
+    RedisStream *stream = std::get_if<RedisStream>(&it->second.value);
+    if (!stream)
+      return RESPValue::Error("WRONGTYPE Operation against a key holding the wrong kind of value");
+
+    StreamID start_id;
+    if (!parse_stream_id(start_id_str, start_id, nullptr, false))
+      return RESPValue::Error("ERR Invalid stream ID specified as stream command argument for key " + key);
+
+    std::vector<RESPValue> results;
+    auto iter = stream->upper_bound(start_id);
+    for (; iter != stream->end(); ++iter)
+    {
+      // Add [id, [field1, value1, ...]]
+      std::vector<RESPValue> entry_fields;
+      for (const auto &s : iter->second)
+        entry_fields.push_back(RESPValue::BulkString(s));
+
+      results.push_back(RESPValue::Array({RESPValue::BulkString(iter->first.to_string()),
+                                          RESPValue::Array(entry_fields)}));
+    }
+
+    if (!results.empty())
+      all_results.push_back(RESPValue::Array({RESPValue::BulkString(key),
+                                              RESPValue::Array(results)}));
+  }
+
+  if (all_results.empty())
+    return RESPValue::Null();
+
+  return RESPValue::Array(all_results);
+}
+
 bool parse_stream_id(const std::string &id_str,
                      StreamID &id,
                      const StreamID *last_id,
                      bool is_range_end)
 {
   using namespace std::chrono;
+
+  if (id_str == "-")
+  {
+    id = {0, 0}; // Minimum possible ID
+    return true;
+  }
+  if (id_str == "+")
+  {
+    id = {UINT64_MAX, UINT64_MAX}; // Maximum possible ID
+    return true;
+  }
 
   if (id_str == "*")
   {
