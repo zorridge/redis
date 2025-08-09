@@ -5,7 +5,7 @@
 A project focused on emulating Redis’s high efficiency and performance, utilizing a single-threaded, event-driven architecture with I/O multiplexing (kqueue/epoll) to support concurrent client connections and blocking operations.
 
 ```mermaid
-flowchart LR
+flowchart TB
     %% Define Nodes with Appropriate Shapes
     A@{ shape: processes, label: "Clients" }
     B@{ shape: lean-r, label: "TCP Network Layer" }
@@ -78,6 +78,7 @@ redis-cli -h localhost -p 6379
 ```
 
 > Yes, I am reinventing the wheel. But at least it’s not in JavaScript.
+
 
 
 
