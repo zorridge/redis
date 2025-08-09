@@ -8,7 +8,7 @@
 
 ClientHandler::ClientHandler(int client_fd) : m_client_fd(client_fd) {}
 
-void ClientHandler::handle_read(CommandDispatcher &dispatcher, std::list<int> &ready_list)
+void ClientHandler::handle_read(CommandDispatcher &dispatcher)
 {
   constexpr size_t BUFFER_SIZE = 4096;
   char buffer[BUFFER_SIZE];
@@ -30,7 +30,7 @@ void ClientHandler::handle_read(CommandDispatcher &dispatcher, std::list<int> &r
     return;
   }
 
-  RESPValue result = dispatcher.dispatch(value, m_client_fd.get(), ready_list);
+  RESPValue result = dispatcher.dispatch(value, m_client_fd.get());
 
   if (result.type == RESPValue::Type::Array &&
       result.array.size() == 2 &&
@@ -46,7 +46,7 @@ void ClientHandler::handle_read(CommandDispatcher &dispatcher, std::list<int> &r
   send(m_client_fd.get(), response.c_str(), response.size(), 0);
 }
 
-void ClientHandler::handle_reprocess(CommandDispatcher &dispatcher, std::list<int> &ready_list)
+void ClientHandler::handle_reprocess(CommandDispatcher &dispatcher)
 {
   if (!m_blocked_command.has_value())
     return;
@@ -56,7 +56,7 @@ void ClientHandler::handle_reprocess(CommandDispatcher &dispatcher, std::list<in
   RESPValue value = std::move(m_blocked_command.value());
   m_blocked_command.reset();
 
-  RESPValue result = dispatcher.dispatch(value, m_client_fd.get(), ready_list);
+  RESPValue result = dispatcher.dispatch(value, m_client_fd.get());
   if (result.type == RESP_BLOCK_CLIENT.type && result.str == RESP_BLOCK_CLIENT.str)
   {
     std::cout << "\033[33m[Client " << m_client_fd.get() << "] Re-blocked\033[0m\n";

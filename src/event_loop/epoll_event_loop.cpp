@@ -38,6 +38,8 @@ void EpollEventLoop::run(SocketRAII &server_socket,
 
   // List of clients that were unblocked by a command
   std::list<int> ready_clients;
+  auto &blocking_manager = store.get_blocking_manager();
+  blocking_manager.set_ready_list(&ready_clients);
 
   struct epoll_event events[128];
 
@@ -92,7 +94,7 @@ void EpollEventLoop::run(SocketRAII &server_socket,
         auto it = clients.find(event_fd);
         if (it != clients.end())
         {
-          it->second.handle_read(dispatcher, ready_clients);
+          it->second.handle_read(dispatcher);
         }
       }
     }
@@ -105,7 +107,7 @@ void EpollEventLoop::run(SocketRAII &server_socket,
         auto it = clients.find(fd);
         if (it != clients.end())
         {
-          it->second.handle_reprocess(dispatcher, ready_clients);
+          it->second.handle_reprocess(dispatcher);
         }
       }
       ready_clients.clear();

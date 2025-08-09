@@ -90,10 +90,7 @@ RESPValue DataStore::xrange(const std::string &key,
   return RESPValue::Array(std::move(results));
 }
 
-RESPValue DataStore::xread(const std::vector<std::string> &keys,
-                           const std::vector<std::string> &ids,
-                           int64_t block_ms,
-                           int client_fd)
+RESPValue DataStore::xread(const std::vector<std::string> &keys, const std::vector<std::string> &ids, int64_t block_ms)
 {
   std::lock_guard<std::mutex> lock(m_mutex);
 
@@ -138,11 +135,7 @@ RESPValue DataStore::xread(const std::vector<std::string> &keys,
     return RESPValue::Array(std::move(all_results));
 
   if (block_ms >= 0)
-  {
-    // Register this client as waiting
-    m_blocking_manager.block_client(client_fd, keys, block_ms);
     return RESP_BLOCK_CLIENT; // return special signal
-  }
 
   return RESPValue::Null(); // no data and non-blocking
 }

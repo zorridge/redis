@@ -31,11 +31,14 @@ private:
       bool has_timeout;
     };
 
+    void set_ready_list(std::list<int> *ready_list) { m_ready_list = ready_list; }
     void block_client(int client_fd, const std::vector<std::string> &keys, int64_t timeout_ms);
-    std::vector<int> unblock_clients_for_key(const std::string &key);
+    void unblock_clients_for_key(const std::string &key);
     std::vector<int> find_and_clear_timed_out_clients();
 
   private:
+    std::list<int> *m_ready_list = nullptr;
+
     // key -> queue of client_fd waiting
     std::unordered_map<std::string, std::queue<int>> m_key_to_waiters;
     // client_fd -> blocking details
@@ -45,9 +48,7 @@ private:
 public:
   RESPValue type(const std::string &key);
 
-  RESPValue set(const std::string &key,
-                const std::string &value,
-                std::chrono::milliseconds ttl = std::chrono::milliseconds(0));
+  RESPValue set(const std::string &key, const std::string &value, std::chrono::milliseconds ttl = std::chrono::milliseconds(0));
   RESPValue get(const std::string &key);
 
   RESPValue llen(const std::string &key);
@@ -58,14 +59,8 @@ public:
   RESPValue blpop(const std::string &key, double timeout_seconds);
 
   RESPValue xadd(const std::string &key, const std::string &id, const StreamEntry &entry);
-  RESPValue xrange(const std::string &key,
-                   const std::string &start_id_str,
-                   const std::string &end_id_str,
-                   int64_t count);
-  RESPValue xread(const std::vector<std::string> &keys,
-                  const std::vector<std::string> &ids,
-                  int64_t block_ms,
-                  int client_fd);
+  RESPValue xrange(const std::string &key, const std::string &start_id_str, const std::string &end_id_str, int64_t count);
+  RESPValue xread(const std::vector<std::string> &keys, const std::vector<std::string> &ids, int64_t block_ms);
 
   BlockingManager &get_blocking_manager() { return m_blocking_manager; }
   std::optional<StreamID> get_last_stream_id(const std::string &key) const;

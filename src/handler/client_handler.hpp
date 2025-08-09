@@ -9,8 +9,8 @@ class ClientHandler
 public:
   explicit ClientHandler(int client_fd);
 
-  void handle_read(CommandDispatcher &dispatcher, std::list<int> &ready_list);
-  void handle_reprocess(CommandDispatcher &dispatcher, std::list<int> &ready_list);
+  void handle_read(CommandDispatcher &dispatcher);
+  void handle_reprocess(CommandDispatcher &dispatcher);
 
 private:
   SocketRAII m_client_fd;

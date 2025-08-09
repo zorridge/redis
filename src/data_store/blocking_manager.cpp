@@ -22,12 +22,12 @@ void DataStore::BlockingManager::block_client(int client_fd, const std::vector<s
     m_key_to_waiters[key].push(client_fd);
 }
 
-std::vector<int> DataStore::BlockingManager::unblock_clients_for_key(const std::string &key)
+void DataStore::BlockingManager::unblock_clients_for_key(const std::string &key)
 {
   auto it = m_key_to_waiters.find(key);
   if (it == m_key_to_waiters.end())
   {
-    return {}; // No one is waiting on this key
+    return; // No one is waiting on this key
   }
 
   std::vector<int> unblocked_fds;
@@ -42,7 +42,10 @@ std::vector<int> DataStore::BlockingManager::unblock_clients_for_key(const std::
   }
   m_key_to_waiters.erase(it);
 
-  return unblocked_fds;
+  for (int fd : unblocked_fds)
+    m_ready_list->push_back(fd);
+
+  return;
 }
 
 std::vector<int> DataStore::BlockingManager::find_and_clear_timed_out_clients()

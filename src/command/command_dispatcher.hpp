@@ -11,12 +11,12 @@
 class CommandDispatcher
 {
 public:
-  using Handler = std::function<RESPValue(const RESPValue &, int, std::list<int> &)>;
+  using Handler = std::function<RESPValue(const RESPValue &, int)>;
 
   CommandDispatcher(DataStore &store);
 
   void register_command(const std::string &cmd, Handler handler);
-  RESPValue dispatch(const RESPValue &value, int client_fd, std::list<int> &ready_list) const;
+  RESPValue dispatch(const RESPValue &value, int client_fd) const;
 
   DataStore &get_store() { return m_store; }
 

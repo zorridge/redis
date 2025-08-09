@@ -11,7 +11,7 @@ void CommandDispatcher::register_command(const std::string &cmd, Handler handler
   m_handlers[to_upper(cmd)] = std::move(handler);
 }
 
-RESPValue CommandDispatcher::dispatch(const RESPValue &value, int client_fd, std::list<int> &ready_list) const
+RESPValue CommandDispatcher::dispatch(const RESPValue &value, int client_fd) const
 {
   printCommand(value);
 
@@ -30,7 +30,7 @@ RESPValue CommandDispatcher::dispatch(const RESPValue &value, int client_fd, std
   auto it = m_handlers.find(cmd);
   if (it != m_handlers.end())
   {
-    return it->second(value, client_fd, ready_list);
+    return it->second(value, client_fd);
   }
 
   return RESPValue::Error("unknown command");

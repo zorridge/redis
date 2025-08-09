@@ -8,18 +8,22 @@ namespace commands
   {
     auto adapt = [&dispatcher](auto func)
     {
-      return [func, &dispatcher](const RESPValue &value, int, std::list<int> &) -> RESPValue
+      return [func, &dispatcher](const RESPValue &value, int client_fd) -> RESPValue
       {
-        return func(value, dispatcher.get_store());
+        if constexpr (std::is_invocable_v<decltype(func), const RESPValue &, DataStore &, int>)
+          return func(value, dispatcher.get_store(), client_fd);
+        else if constexpr (std::is_invocable_v<decltype(func), const RESPValue &, DataStore &>)
+          return func(value, dispatcher.get_store());
+        else if constexpr (std::is_invocable_v<decltype(func), const RESPValue &>)
+          return func(value);
+        else
+          static_assert(false, "unsupported command signature for adapt");
       };
     };
 
-    dispatcher.register_command("PING", [](const RESPValue &value, int, std::list<int> &) -> RESPValue
-                                { return commands::ping(value); });
-    dispatcher.register_command("COMMAND", [](const RESPValue &value, int, std::list<int> &) -> RESPValue
-                                { return commands::command(value); });
-    dispatcher.register_command("ECHO", [](const RESPValue &value, int, std::list<int> &) -> RESPValue
-                                { return commands::echo(value); });
+    dispatcher.register_command("PING", adapt(commands::ping));
+    dispatcher.register_command("COMMAND", adapt(commands::command));
+    dispatcher.register_command("ECHO", adapt(commands::echo));
 
     dispatcher.register_command("TYPE", adapt(commands::type));
 
@@ -33,11 +37,9 @@ namespace commands
     dispatcher.register_command("LPOP", adapt(commands::lpop));
     dispatcher.register_command("BLPOP", adapt(commands::blpop));
 
-    dispatcher.register_command("XADD", [&dispatcher](const RESPValue &value, int fd, std::list<int> &list) -> RESPValue
-                                { return commands::xadd(value, dispatcher.get_store(), fd, list); });
+    dispatcher.register_command("XADD", adapt(commands::xadd));
     dispatcher.register_command("XRANGE", adapt(commands::xrange));
-    dispatcher.register_command("XREAD", [&dispatcher](const RESPValue &value, int fd, std::list<int> &list) -> RESPValue
-                                { return commands::xread(value, dispatcher.get_store(), fd, list); });
+    dispatcher.register_command("XREAD", adapt(commands::xread));
   }
 
   RESPValue ping(const RESPValue &value)
@@ -210,7 +212,7 @@ namespace commands
     return store.blpop(key, timeout);
   }
 
-  RESPValue xadd(const RESPValue &value, DataStore &store, int client_fd, std::list<int> &ready_list)
+  RESPValue xadd(const RESPValue &value, DataStore &store)
   {
     // XADD key id field1 value1 [field2 value2 ...]
     if (value.array.size() < 5 || (value.array.size() - 3) % 2 != 0)
@@ -226,10 +228,8 @@ namespace commands
 
     if (result.type != RESPValue::Type::Error)
     {
-      auto unblocked_fds = store.get_blocking_manager().unblock_clients_for_key(key);
       // Let main loop re-process unblocked clients
-      for (int fd : unblocked_fds)
-        ready_list.push_back(fd);
+      store.get_blocking_manager().unblock_clients_for_key(key);
     }
 
     return result;
@@ -260,7 +260,7 @@ namespace commands
     return store.xrange(value.array[1].str, value.array[2].str, value.array[3].str, count);
   }
 
-  RESPValue xread(const RESPValue &value, DataStore &store, int client_fd, std::list<int> &ready_list)
+  RESPValue xread(const RESPValue &value, DataStore &store, int client_fd)
   {
     // Basic: XREAD STREAMS key id
     // Full: XREAD [COUNT count] [BLOCK ms] STREAMS key [key ...] id [id ...]
@@ -323,10 +323,13 @@ namespace commands
         ids.push_back(id_str);
     }
 
-    RESPValue result = store.xread(keys, ids, block_ms, client_fd);
+    RESPValue result = store.xread(keys, ids, block_ms);
 
     if (result.type == RESP_BLOCK_CLIENT.type && result.str == RESP_BLOCK_CLIENT.str)
     {
+      // Register this client as waiting
+      store.get_blocking_manager().block_client(client_fd, keys, block_ms);
+
       std::vector<RESPValue> commands;
       commands.reserve(value.array.size());
 
