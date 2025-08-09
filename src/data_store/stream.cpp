@@ -9,8 +9,6 @@ RESPValue DataStore::xadd(const std::string &key,
                           const std::string &id_str,
                           const StreamEntry &entry)
 {
-  std::lock_guard<std::mutex> lock(m_mutex);
-
   // Try to find existing stream and get last_id if possible
   StreamID id;
   const StreamID *last_id = nullptr;
@@ -53,8 +51,6 @@ RESPValue DataStore::xrange(const std::string &key,
                             const std::string &end_id_str,
                             int64_t count)
 {
-  std::lock_guard<std::mutex> lock(m_mutex);
-
   auto it = m_store.find(key);
   if (it == m_store.end() || is_expired(it->second))
     return RESPValue::Array({});
@@ -92,8 +88,6 @@ RESPValue DataStore::xrange(const std::string &key,
 
 RESPValue DataStore::xread(const std::vector<std::string> &keys, const std::vector<std::string> &ids, int64_t block_ms)
 {
-  std::lock_guard<std::mutex> lock(m_mutex);
-
   std::vector<RESPValue> all_results;
   for (size_t i = 0; i < keys.size(); ++i)
   {

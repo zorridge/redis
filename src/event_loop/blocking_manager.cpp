@@ -1,17 +1,17 @@
-#include "data_store.hpp"
+#include "blocking_manager.hpp"
 
 const RESPValue RESP_BLOCK_CLIENT = RESPValue::SimpleString("__BLOCK__");
 
-void DataStore::BlockingManager::block_client(int client_fd, const std::vector<std::string> &keys, int64_t timeout_ms)
+void BlockingManager::block_client(int client_fd, const std::vector<std::string> &keys, int64_t block_ms)
 {
   BlockedClient client;
   client.fd = client_fd;
   client.keys = keys;
-  client.has_timeout = (timeout_ms > 0);
+  client.has_timeout = (block_ms > 0);
 
-  if (client.has_timeout && timeout_ms > 0)
+  if (client.has_timeout && block_ms > 0)
   {
-    client.timeout_at = std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout_ms);
+    client.timeout_at = std::chrono::steady_clock::now() + std::chrono::milliseconds(block_ms);
   }
 
   // Add to the main details map for easy lookup
@@ -22,7 +22,7 @@ void DataStore::BlockingManager::block_client(int client_fd, const std::vector<s
     m_key_to_waiters[key].push(client_fd);
 }
 
-void DataStore::BlockingManager::unblock_clients_for_key(const std::string &key)
+void BlockingManager::unblock_clients_for_key(const std::string &key)
 {
   auto it = m_key_to_waiters.find(key);
   if (it == m_key_to_waiters.end())
@@ -43,12 +43,34 @@ void DataStore::BlockingManager::unblock_clients_for_key(const std::string &key)
   m_key_to_waiters.erase(it);
 
   for (int fd : unblocked_fds)
-    m_ready_list->push_back(fd);
+    m_ready_list.push_back(fd);
 
   return;
 }
 
-std::vector<int> DataStore::BlockingManager::find_and_clear_timed_out_clients()
+void BlockingManager::unblock_first_client_for_key(const std::string &key)
+{
+  auto it = m_key_to_waiters.find(key);
+  if (it == m_key_to_waiters.end())
+  {
+    return; // No one is waiting on this key
+  }
+
+  std::queue<int> &waiters = it->second;
+  if (!waiters.empty())
+  {
+    int client_fd = waiters.front();
+    waiters.pop();
+
+    if (m_waiter_details.erase(client_fd) > 0)
+      m_ready_list.push_back(client_fd);
+
+    if (waiters.empty())
+      m_key_to_waiters.erase(it);
+  }
+}
+
+std::vector<int> BlockingManager::find_and_clear_timed_out_clients()
 {
   std::vector<int> timed_out_fds;
   if (m_waiter_details.empty())

@@ -1,8 +1,9 @@
 #pragma once
 
 #include "command_dispatcher.hpp"
-#include "../resp/resp_value.hpp"
+#include "../event_loop/blocking_manager.hpp"
 #include "../data_store/data_store.hpp"
+#include "../resp/resp_value.hpp"
 
 namespace commands
 {
@@ -20,14 +21,14 @@ namespace commands
 
   // List
   RESPValue llen(const RESPValue &value, DataStore &store);
-  RESPValue rpush(const RESPValue &value, DataStore &store);
-  RESPValue lpush(const RESPValue &value, DataStore &store);
+  RESPValue rpush(const RESPValue &value, DataStore &store, BlockingManager &blocking_manager);
+  RESPValue lpush(const RESPValue &value, DataStore &store, BlockingManager &blocking_manager);
   RESPValue lrange(const RESPValue &value, DataStore &store);
   RESPValue lpop(const RESPValue &value, DataStore &store);
-  RESPValue blpop(const RESPValue &value, DataStore &store);
+  RESPValue blpop(const RESPValue &value, DataStore &store, BlockingManager &blocking_manager, int client_fd);
 
   // Stream
-  RESPValue xadd(const RESPValue &value, DataStore &store);
+  RESPValue xadd(const RESPValue &value, DataStore &store, BlockingManager &blocking_manager);
   RESPValue xrange(const RESPValue &value, DataStore &store);
-  RESPValue xread(const RESPValue &value, DataStore &store, int client_fd);
+  RESPValue xread(const RESPValue &value, DataStore &store, BlockingManager &blocking_manager, int client_fd);
 }

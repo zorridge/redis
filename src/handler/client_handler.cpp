@@ -34,8 +34,8 @@ void ClientHandler::handle_read(CommandDispatcher &dispatcher)
 
   if (result.type == RESPValue::Type::Array &&
       result.array.size() == 2 &&
-      result.array[0].type == RESPValue::Type::SimpleString &&
-      result.array[0].str == "__BLOCK__")
+      result.array[0].type == RESP_BLOCK_CLIENT.type &&
+      result.array[0].str == RESP_BLOCK_CLIENT.str)
   {
     std::cout << "\033[33m[Client " << m_client_fd.get() << "] Blocked\033[0m\n";
     m_blocked_command = std::move(result.array[1]);

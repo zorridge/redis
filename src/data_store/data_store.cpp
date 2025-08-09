@@ -8,8 +8,6 @@ bool DataStore::is_expired(const Entry &entry) const
 
 RESPValue DataStore::type(const std::string &key)
 {
-  std::lock_guard<std::mutex> lock(m_mutex);
-
   auto it = m_store.find(key);
   if (it == m_store.end() || is_expired(it->second))
     return RESPValue::SimpleString("none");
@@ -27,8 +25,6 @@ RESPValue DataStore::set(const std::string &key,
                          const std::string &value,
                          std::chrono::milliseconds ttl)
 {
-  std::lock_guard<std::mutex> lock(m_mutex);
-
   Entry entry;
   entry.value = value;
   if (ttl.count() > 0)
@@ -42,8 +38,6 @@ RESPValue DataStore::set(const std::string &key,
 
 RESPValue DataStore::get(const std::string &key)
 {
-  std::lock_guard<std::mutex> lock(m_mutex);
-
   auto it = m_store.find(key);
   if (it == m_store.end())
     return RESPValue::Null();

@@ -11,6 +11,7 @@
 void EpollEventLoop::run(SocketRAII &server_socket,
                          DataStore &store,
                          CommandDispatcher &dispatcher,
+                         BlockingManager &blocking_manager,
                          std::atomic<bool> &running)
 {
   // 1. Create a new epoll instance
@@ -35,11 +36,6 @@ void EpollEventLoop::run(SocketRAII &server_socket,
 
   // Map to store state for each client connection
   std::map<int, ClientHandler> clients;
-
-  // List of clients that were unblocked by a command
-  std::list<int> ready_clients;
-  auto &blocking_manager = store.get_blocking_manager();
-  blocking_manager.set_ready_list(&ready_clients);
 
   struct epoll_event events[128];
 
@@ -100,6 +96,7 @@ void EpollEventLoop::run(SocketRAII &server_socket,
     }
 
     // 5. Re-process clients that became ready
+    auto &ready_clients = blocking_manager.get_ready_list();
     if (!ready_clients.empty())
     {
       for (int fd : ready_clients)
@@ -110,11 +107,10 @@ void EpollEventLoop::run(SocketRAII &server_socket,
           it->second.handle_reprocess(dispatcher);
         }
       }
-      ready_clients.clear();
+      blocking_manager.clear_ready_list();
     }
 
     // 6. Process timed-out clients
-    auto &blocking_manager = store.get_blocking_manager();
     std::vector<int> timed_out_fds = blocking_manager.find_and_clear_timed_out_clients();
     for (int fd : timed_out_fds)
     {

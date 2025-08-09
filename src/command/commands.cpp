@@ -10,14 +10,14 @@ namespace commands
     {
       return [func, &dispatcher](const RESPValue &value, int client_fd) -> RESPValue
       {
-        if constexpr (std::is_invocable_v<decltype(func), const RESPValue &, DataStore &, int>)
-          return func(value, dispatcher.get_store(), client_fd);
+        if constexpr (std::is_invocable_v<decltype(func), const RESPValue &>)
+          return func(value);
         else if constexpr (std::is_invocable_v<decltype(func), const RESPValue &, DataStore &>)
           return func(value, dispatcher.get_store());
-        else if constexpr (std::is_invocable_v<decltype(func), const RESPValue &>)
-          return func(value);
-        else
-          static_assert(false, "unsupported command signature for adapt");
+        else if constexpr (std::is_invocable_v<decltype(func), const RESPValue &, DataStore &, BlockingManager &>)
+          return func(value, dispatcher.get_store(), dispatcher.get_blocking_manager());
+        else if constexpr (std::is_invocable_v<decltype(func), const RESPValue &, DataStore &, BlockingManager &, int>)
+          return func(value, dispatcher.get_store(), dispatcher.get_blocking_manager(), client_fd);
       };
     };
 
@@ -115,7 +115,7 @@ namespace commands
     return store.llen(key);
   }
 
-  RESPValue rpush(const RESPValue &value, DataStore &store)
+  RESPValue rpush(const RESPValue &value, DataStore &store, BlockingManager &blocking_manager)
   {
     // RPUSH key element [element ...]
     if (value.array.size() < 3)
@@ -126,10 +126,16 @@ namespace commands
     for (size_t i = 2; i < value.array.size(); ++i)
       values.push_back(value.array[i].str);
 
-    return store.rpush(key, values);
+    RESPValue result = store.rpush(key, values);
+    if (result.type != RESPValue::Type::Error)
+    {
+      blocking_manager.unblock_first_client_for_key(key);
+    }
+
+    return result;
   }
 
-  RESPValue lpush(const RESPValue &value, DataStore &store)
+  RESPValue lpush(const RESPValue &value, DataStore &store, BlockingManager &blocking_manager)
   {
     // LPUSH key element [element ...]
     if (value.array.size() < 3)
@@ -140,7 +146,13 @@ namespace commands
     for (size_t i = 2; i < value.array.size(); ++i)
       values.push_back(value.array[i].str);
 
-    return store.lpush(key, values);
+    RESPValue result = store.lpush(key, values);
+    if (result.type != RESPValue::Type::Error)
+    {
+      blocking_manager.unblock_first_client_for_key(key);
+    }
+
+    return result;
   }
 
   RESPValue lrange(const RESPValue &value, DataStore &store)
@@ -190,7 +202,7 @@ namespace commands
     return store.lpop(key, count);
   }
 
-  RESPValue blpop(const RESPValue &value, DataStore &store)
+  RESPValue blpop(const RESPValue &value, DataStore &store, BlockingManager &blocking_manager, int client_fd)
   {
     // BLPOP key timeout
     if (value.array.size() != 3)
@@ -209,10 +221,24 @@ namespace commands
       return RESPValue::Error("timeout is not a double");
     }
 
-    return store.blpop(key, timeout);
+    RESPValue result = store.blpop(key);
+
+    if (result.type == RESP_BLOCK_CLIENT.type && result.str == RESP_BLOCK_CLIENT.str)
+    {
+      // Register this client as waiting
+      blocking_manager.block_client(client_fd, {key}, timeout * 1000);
+      RESPValue command = RESPValue::Array({RESPValue::BulkString("LPOP"), RESPValue::BulkString(key)});
+
+      return RESPValue::Array({
+          std::move(result), // Signal
+          std::move(command) // Command to save
+      });
+    }
+
+    return result;
   }
 
-  RESPValue xadd(const RESPValue &value, DataStore &store)
+  RESPValue xadd(const RESPValue &value, DataStore &store, BlockingManager &blocking_manager)
   {
     // XADD key id field1 value1 [field2 value2 ...]
     if (value.array.size() < 5 || (value.array.size() - 3) % 2 != 0)
@@ -229,7 +255,7 @@ namespace commands
     if (result.type != RESPValue::Type::Error)
     {
       // Let main loop re-process unblocked clients
-      store.get_blocking_manager().unblock_clients_for_key(key);
+      blocking_manager.unblock_clients_for_key(key);
     }
 
     return result;
@@ -260,7 +286,7 @@ namespace commands
     return store.xrange(value.array[1].str, value.array[2].str, value.array[3].str, count);
   }
 
-  RESPValue xread(const RESPValue &value, DataStore &store, int client_fd)
+  RESPValue xread(const RESPValue &value, DataStore &store, BlockingManager &blocking_manager, int client_fd)
   {
     // Basic: XREAD STREAMS key id
     // Full: XREAD [COUNT count] [BLOCK ms] STREAMS key [key ...] id [id ...]
@@ -328,7 +354,7 @@ namespace commands
     if (result.type == RESP_BLOCK_CLIENT.type && result.str == RESP_BLOCK_CLIENT.str)
     {
       // Register this client as waiting
-      store.get_blocking_manager().block_client(client_fd, keys, block_ms);
+      blocking_manager.block_client(client_fd, keys, block_ms);
 
       std::vector<RESPValue> commands;
       commands.reserve(value.array.size());
