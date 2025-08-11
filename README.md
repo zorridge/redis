@@ -14,12 +14,14 @@ flowchart TB
     E@{ shape: rounded, label: "Command Dispatcher" }
     F@{ shape: database, label: "Data Store" }
     G@{ shape: rounded, label: "Blocking Manager" }
+    H@{ shape: rounded, label: "Client Transaction Queue" }
 
     %% Request Lifecycle
     A <-- Request/Response --> B
     B -- "New Event" --> C
     C -- "Ready To Read" --> D
     D -- "Parse & Execute" --> E
+    E -- "Execute" --> H
     E -- "Read/Write Data" --> F
     E -- "Block/Unblock Client" --> G
 
@@ -84,6 +86,7 @@ redis-cli -h localhost -p 6379
 ```
 
 > Yes, I am reinventing the wheel. But at least it’s not in JavaScript.
+
 
 
 
