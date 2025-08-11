@@ -58,6 +58,12 @@ flowchart TB
 * `XRANGE`
 * `XREAD`
 
+#### Transactions
+> For rollback, please consult your nearest relational database.
+* `MULTI`
+* `EXEC`
+* `DISCARD`
+
 ## 🚧 Setup
 
 > The part everyone skips anyway.
@@ -78,6 +84,7 @@ redis-cli -h localhost -p 6379
 ```
 
 > Yes, I am reinventing the wheel. But at least it’s not in JavaScript.
+
 
 
 
