@@ -9,15 +9,17 @@
 #include <unordered_map>
 #include <list>
 
+class ClientHandler;
+
 class CommandDispatcher
 {
 public:
-  using Handler = std::function<RESPValue(const RESPValue &, int)>;
+  using Handler = std::function<RESPValue(const RESPValue &, ClientHandler &)>;
 
   CommandDispatcher(DataStore &store, BlockingManager &blocking_manager);
 
   void register_command(const std::string &cmd, Handler handler);
-  RESPValue dispatch(const RESPValue &value, int client_fd) const;
+  RESPValue dispatch(const RESPValue &value, ClientHandler &client) const;
 
   DataStore &get_store() { return m_store; }
   BlockingManager &get_blocking_manager() { return m_blocking_manager; }

@@ -8,7 +8,7 @@ namespace commands
   {
     auto adapt = [&dispatcher](auto func)
     {
-      return [func, &dispatcher](const RESPValue &value, int client_fd) -> RESPValue
+      return [func, &dispatcher](const RESPValue &value, ClientHandler &client) -> RESPValue
       {
         if constexpr (std::is_invocable_v<decltype(func), const RESPValue &>)
           return func(value);
@@ -17,7 +17,11 @@ namespace commands
         else if constexpr (std::is_invocable_v<decltype(func), const RESPValue &, DataStore &, BlockingManager &>)
           return func(value, dispatcher.get_store(), dispatcher.get_blocking_manager());
         else if constexpr (std::is_invocable_v<decltype(func), const RESPValue &, DataStore &, BlockingManager &, int>)
-          return func(value, dispatcher.get_store(), dispatcher.get_blocking_manager(), client_fd);
+          return func(value, dispatcher.get_store(), dispatcher.get_blocking_manager(), client.get_fd());
+        else if constexpr (std::is_invocable_v<decltype(func), const RESPValue &, ClientHandler &>)
+          return func(value, client);
+        else if constexpr (std::is_invocable_v<decltype(func), const RESPValue &, ClientHandler &, CommandDispatcher &>)
+          return func(value, client, dispatcher);
       };
     };
 
@@ -29,6 +33,7 @@ namespace commands
 
     dispatcher.register_command("SET", adapt(commands::set));
     dispatcher.register_command("GET", adapt(commands::get));
+    dispatcher.register_command("INCR", adapt(commands::incr));
 
     dispatcher.register_command("LLEN", adapt(commands::llen));
     dispatcher.register_command("RPUSH", adapt(commands::rpush));
@@ -40,6 +45,10 @@ namespace commands
     dispatcher.register_command("XADD", adapt(commands::xadd));
     dispatcher.register_command("XRANGE", adapt(commands::xrange));
     dispatcher.register_command("XREAD", adapt(commands::xread));
+
+    dispatcher.register_command("MULTI", adapt(commands::multi));
+    dispatcher.register_command("EXEC", adapt(commands::exec));
+    dispatcher.register_command("DISCARD", adapt(commands::discard));
   }
 
   RESPValue ping(const RESPValue &value)
@@ -48,7 +57,7 @@ namespace commands
       return RESPValue::SimpleString("PONG");
     if (value.array.size() == 2)
       return value.array[1];
-    return RESPValue::Error("wrong number of arguments for 'PING' command");
+    return RESPValue::Error("ERR wrong number of arguments for 'ping' command");
   }
 
   RESPValue command(const RESPValue &)
@@ -59,7 +68,7 @@ namespace commands
   RESPValue echo(const RESPValue &value)
   {
     if (value.array.size() != 2)
-      return RESPValue::Error("wrong number of arguments for 'ECHO' command");
+      return RESPValue::Error("ERR wrong number of arguments for 'echo' command");
     return value.array[1];
   }
 
@@ -67,7 +76,7 @@ namespace commands
   {
     // TYPE key
     if (value.array.size() != 2)
-      return RESPValue::Error("wrong number of arguments for 'TYPE' command");
+      return RESPValue::Error("ERR wrong number of arguments for 'type' command");
     return store.type(value.array[1].str);
   }
 
@@ -75,7 +84,7 @@ namespace commands
   {
     // SET key value [PX milliseconds]
     if (value.array.size() != 3 && value.array.size() != 5)
-      return RESPValue::Error("wrong number of arguments for 'SET' command");
+      return RESPValue::Error("ERR wrong number of arguments for 'set' command");
 
     if (value.array.size() == 3)
     {
@@ -83,33 +92,40 @@ namespace commands
     }
 
     if (to_upper(value.array[3].str) != "PX")
-      return RESPValue::Error("syntax error");
+      return RESPValue::Error("ERR syntax error");
 
     try
     {
       std::chrono::milliseconds ttl{std::stoll(value.array[4].str)};
       if (ttl.count() <= 0)
-        return RESPValue::Error("value must be positive");
+        return RESPValue::Error("ERR invalid expire time in 'set' command");
       return store.set(value.array[1].str, value.array[2].str, ttl);
     }
     catch (...)
     {
-      return RESPValue::Error("value is not an integer");
+      return RESPValue::Error("ERR value is not an integer or out of range");
     }
   }
 
   RESPValue get(const RESPValue &value, DataStore &store)
   {
     if (value.array.size() != 2)
-      return RESPValue::Error("wrong number of arguments for 'GET' command");
+      return RESPValue::Error("ERR wrong number of arguments for 'get' command");
     return store.get(value.array[1].str);
+  }
+
+  RESPValue incr(const RESPValue &value, DataStore &store)
+  {
+    if (value.array.size() != 2)
+      return RESPValue::Error("ERR wrong number of arguments for 'incr' command");
+    return store.incr(value.array[1].str);
   }
 
   RESPValue llen(const RESPValue &value, DataStore &store)
   {
     // LLEN key
     if (value.array.size() != 2)
-      return RESPValue::Error("wrong number of arguments for 'LLEN' command");
+      return RESPValue::Error("ERR wrong number of arguments for 'llen' command");
 
     const std::string &key = value.array[1].str;
     return store.llen(key);
@@ -119,7 +135,7 @@ namespace commands
   {
     // RPUSH key element [element ...]
     if (value.array.size() < 3)
-      return RESPValue::Error("wrong number of arguments for 'RPUSH' command");
+      return RESPValue::Error("ERR wrong number of arguments for 'rpush' command");
 
     const std::string &key = value.array[1].str;
     std::vector<std::string> values;
@@ -139,7 +155,7 @@ namespace commands
   {
     // LPUSH key element [element ...]
     if (value.array.size() < 3)
-      return RESPValue::Error("wrong number of arguments for 'LPUSH' command");
+      return RESPValue::Error("ERR wrong number of arguments for 'lpush' command");
 
     const std::string &key = value.array[1].str;
     std::vector<std::string> values;
@@ -159,7 +175,7 @@ namespace commands
   {
     // LRANGE key start stop
     if (value.array.size() != 4)
-      return RESPValue::Error("wrong number of arguments for 'LRANGE' command");
+      return RESPValue::Error("ERR wrong number of arguments for 'lrange' command");
 
     const std::string &key = value.array[1].str;
     try
@@ -170,7 +186,7 @@ namespace commands
     }
     catch (...)
     {
-      return RESPValue::Error("start or stop is not an integer");
+      return RESPValue::Error("ERR value is not an integer or out of range");
     }
   }
 
@@ -178,7 +194,7 @@ namespace commands
   {
     // LPOP key [count]
     if (value.array.size() < 2 || value.array.size() > 3)
-      return RESPValue::Error("wrong number of arguments for 'LPOP' command");
+      return RESPValue::Error("ERR wrong number of arguments for 'lpop' command");
 
     const std::string &key = value.array[1].str;
     int64_t count = 1;
@@ -190,11 +206,11 @@ namespace commands
       }
       catch (...)
       {
-        return RESPValue::Error("value is not an integer");
+        return RESPValue::Error("ERR value is not an integer or out of range");
       }
 
       if (count < 0)
-        return RESPValue::Error("value must be positive");
+        return RESPValue::Error("ERR value is out of range, must be positive");
       if (count == 0)
         return RESPValue::Array({});
     }
@@ -206,7 +222,7 @@ namespace commands
   {
     // BLPOP key timeout
     if (value.array.size() != 3)
-      return RESPValue::Error("wrong number of arguments for 'BLPOP' command");
+      return RESPValue::Error("ERR wrong number of arguments for 'blpop' command");
 
     const std::string &key = value.array[1].str;
     double timeout = 0.0;
@@ -214,11 +230,11 @@ namespace commands
     {
       timeout = std::stod(value.array[2].str);
       if (timeout < 0.0)
-        return RESPValue::Error("timeout is negative");
+        return RESPValue::Error("ERR timeout is negative");
     }
     catch (...)
     {
-      return RESPValue::Error("timeout is not a double");
+      return RESPValue::Error("ERR timeout is not a float or out of range");
     }
 
     RESPValue result = store.blpop(key);
@@ -242,7 +258,7 @@ namespace commands
   {
     // XADD key id field1 value1 [field2 value2 ...]
     if (value.array.size() < 5 || (value.array.size() - 3) % 2 != 0)
-      return RESPValue::Error("wrong number of arguments for 'XADD' command");
+      return RESPValue::Error("ERR wrong number of arguments for 'xadd' command");
 
     StreamEntry entry;
     for (size_t i = 3; i < value.array.size(); i++)
@@ -265,13 +281,13 @@ namespace commands
   {
     // XRANGE key start end [COUNT count]
     if (value.array.size() < 4)
-      return RESPValue::Error("wrong number of arguments for 'XRANGE' command");
+      return RESPValue::Error("ERR wrong number of arguments for 'xrange' command");
 
     int64_t count = -1;
     if (value.array.size() > 4)
     {
       if (value.array.size() != 6 || value.array[4].str != "COUNT")
-        return RESPValue::Error("syntax error");
+        return RESPValue::Error("ERR syntax error");
 
       try
       {
@@ -279,7 +295,7 @@ namespace commands
       }
       catch (...)
       {
-        return RESPValue::Error("value is not an integer");
+        return RESPValue::Error("ERR value is not an integer or out of range");
       }
     }
 
@@ -298,14 +314,16 @@ namespace commands
       if (opt == "BLOCK")
       {
         if (i + 1 >= value.array.size())
-          return RESPValue::Error("syntax error");
+          return RESPValue::Error("ERR syntax error");
         try
         {
           block_ms = std::stoll(value.array[i + 1].str);
+          if (block_ms < 0)
+            return RESPValue::Error("ERR timeout is negative");
         }
         catch (...)
         {
-          return RESPValue::Error("timeout is not an integer");
+          return RESPValue::Error("ERR value is not an integer or out of range");
         }
         i++;
       }
@@ -317,11 +335,11 @@ namespace commands
     }
 
     if (streams_pos == 0)
-      return RESPValue::Error("must be called with the STREAMS keyword");
+      return RESPValue::Error("ERR Unrecognized option or wrong number of arguments for 'xread' command");
 
     size_t args_after_streams = value.array.size() - (streams_pos + 1);
     if (args_after_streams == 0 || args_after_streams % 2 != 0)
-      return RESPValue::Error("keys and IDs must be provided in pairs");
+      return RESPValue::Error("ERR Unbalanced XREAD list of streams: keys and IDs must be provided in pairs.");
 
     size_t num_streams = args_after_streams / 2;
     std::vector<std::string> keys;
@@ -378,6 +396,42 @@ namespace commands
     }
 
     return result;
+  }
+
+  RESPValue multi(const RESPValue &, ClientHandler &client)
+  {
+    if (client.is_in_transaction())
+      return RESPValue::Error("ERR MULTI calls can not be nested");
+
+    client.start_transaction();
+    return RESPValue::SimpleString("OK");
+  }
+
+  RESPValue discard(const RESPValue &, ClientHandler &client)
+  {
+    if (!client.is_in_transaction())
+      return RESPValue::Error("ERR DISCARD without MULTI");
+
+    client.clear_transaction_state();
+    return RESPValue::SimpleString("OK");
+  }
+
+  RESPValue exec(const RESPValue &, ClientHandler &client, CommandDispatcher &dispatcher)
+  {
+    if (!client.is_in_transaction())
+      return RESPValue::Error("ERR EXEC without MULTI");
+
+    const auto &command_queue = client.get_command_queue();
+    std::vector<RESPValue> results;
+    results.reserve(command_queue.size());
+
+    for (const auto &command : command_queue)
+    {
+      results.push_back(dispatcher.dispatch(command, client));
+    }
+
+    client.clear_transaction_state();
+    return RESPValue::Array(std::move(results));
   }
 }
 

@@ -20,7 +20,7 @@ RESPValue RESPParser::parse()
 RESPValue RESPParser::parse_value(size_t &pos)
 {
   if (pos >= m_buffer.size())
-    return RESPValue::Error("incomplete data");
+    return RESPValue::Error("ERR incomplete data");
 
   char type = m_buffer[pos];
   ++pos;
@@ -38,7 +38,7 @@ RESPValue RESPParser::parse_value(size_t &pos)
   case '*':
     return parse_array(pos);
   default:
-    return RESPValue::Error("protocol error: unknown type");
+    return RESPValue::Error("ERR Protocol error: unknown type");
   }
 }
 
@@ -47,7 +47,7 @@ RESPValue RESPParser::parse_simple_string(size_t &pos)
 {
   auto line = read_line(m_buffer, pos);
   if (!line)
-    return RESPValue::Error("incomplete data");
+    return RESPValue::Error("ERR incomplete data");
 
   return RESPValue::SimpleString(*line);
 }
@@ -57,7 +57,7 @@ RESPValue RESPParser::parse_error(size_t &pos)
 {
   auto line = read_line(m_buffer, pos);
   if (!line)
-    return RESPValue::Error("incomplete data");
+    return RESPValue::Error("ERR incomplete data");
 
   return RESPValue::Error(*line);
 }
@@ -67,7 +67,7 @@ RESPValue RESPParser::parse_integer(size_t &pos)
 {
   auto line = read_line(m_buffer, pos);
   if (!line)
-    return RESPValue::Error("incomplete data");
+    return RESPValue::Error("ERR incomplete data");
 
   try
   {
@@ -76,7 +76,7 @@ RESPValue RESPParser::parse_integer(size_t &pos)
   }
   catch (...)
   {
-    return RESPValue::Error("protocol error: invalid integer");
+    return RESPValue::Error("ERR Protocol error: invalid integer");
   }
 }
 
@@ -85,7 +85,7 @@ RESPValue RESPParser::parse_bulk_string(size_t &pos)
 {
   auto line = read_line(m_buffer, pos);
   if (!line)
-    return RESPValue::Error("incomplete data");
+    return RESPValue::Error("ERR incomplete data");
 
   int64_t len = 0;
   try
@@ -94,19 +94,19 @@ RESPValue RESPParser::parse_bulk_string(size_t &pos)
   }
   catch (...)
   {
-    return RESPValue::Error("protocol error: invalid bulk string length");
+    return RESPValue::Error("ERR Protocol error: invalid bulk string length");
   }
 
   if (len == -1)
     return RESPValue::Null();
 
   if (m_buffer.size() < pos + len + 2)
-    return RESPValue::Error("incomplete data");
+    return RESPValue::Error("ERR incomplete data");
 
   std::string val = m_buffer.substr(pos, len);
   pos += len;
   if (m_buffer.substr(pos, 2) != "\r\n")
-    return RESPValue::Error("protocol error: bulk string missing CRLF");
+    return RESPValue::Error("ERR Protocol error: bulk string missing CRLF");
 
   pos += 2;
   return RESPValue::BulkString(val);
@@ -117,7 +117,7 @@ RESPValue RESPParser::parse_array(size_t &pos)
 {
   auto line = read_line(m_buffer, pos);
   if (!line)
-    return RESPValue::Error("incomplete data");
+    return RESPValue::Error("ERR incomplete data");
 
   int64_t count = 0;
   try
@@ -126,7 +126,7 @@ RESPValue RESPParser::parse_array(size_t &pos)
   }
   catch (...)
   {
-    return RESPValue::Error("protocol error: invalid array length");
+    return RESPValue::Error("ERR Protocol error: invalid array length");
   }
 
   if (count == -1)
@@ -137,7 +137,7 @@ RESPValue RESPParser::parse_array(size_t &pos)
   {
     RESPValue v = parse_value(pos);
     if (v.type == RESPValue::Type::Error)
-      return v; // propagate error (including incomplete data)
+      return v; // propagate error (including ERR incomplete data)
 
     arr.push_back(v);
   }
