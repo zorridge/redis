@@ -2,6 +2,7 @@
 
 #include "command_dispatcher.hpp"
 #include "../event_loop/blocking_manager.hpp"
+#include "../client/client_handler.hpp"
 #include "../data_store/data_store.hpp"
 #include "../resp/resp_value.hpp"
 
@@ -18,6 +19,7 @@ namespace commands
   // String
   RESPValue set(const RESPValue &value, DataStore &store);
   RESPValue get(const RESPValue &value, DataStore &store);
+  RESPValue incr(const RESPValue &value, DataStore &store);
 
   // List
   RESPValue llen(const RESPValue &value, DataStore &store);
@@ -31,4 +33,9 @@ namespace commands
   RESPValue xadd(const RESPValue &value, DataStore &store, BlockingManager &blocking_manager);
   RESPValue xrange(const RESPValue &value, DataStore &store);
   RESPValue xread(const RESPValue &value, DataStore &store, BlockingManager &blocking_manager, int client_fd);
+
+  // Transactions
+  RESPValue multi(const RESPValue &, ClientHandler &);
+  RESPValue exec(const RESPValue &, ClientHandler &, CommandDispatcher &);
+  RESPValue discard(const RESPValue &, ClientHandler &);
 }

@@ -62,3 +62,36 @@ RESPValue DataStore::get(const std::string &key)
 
   return RESPValue::Null();
 }
+
+RESPValue DataStore::incr(const std::string &key)
+{
+  auto it = m_store.find(key);
+  if (it == m_store.end() || is_expired(it->second))
+  {
+    if (it != m_store.end())
+      m_store.erase(it);
+
+    m_store[key] = {"1", std::chrono::steady_clock::time_point::max()};
+    return RESPValue::Integer(1);
+  }
+
+  Entry &entry = it->second;
+  if (auto *str = std::get_if<RedisString>(&entry.value))
+  {
+    int64_t current_val;
+    try
+    {
+      current_val = std::stoll(*str);
+    }
+    catch (...)
+    {
+      return RESPValue::Error("ERR value is not an integer or out of range");
+    }
+
+    int64_t new_val = current_val + 1;
+    entry.value = std::to_string(new_val);
+    return RESPValue::Integer(new_val);
+  }
+  else
+    return RESPValue::Error("WRONGTYPE Operation against a key holding the wrong kind of value");
+}

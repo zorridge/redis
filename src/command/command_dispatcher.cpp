@@ -1,4 +1,5 @@
 #include "command_dispatcher.hpp"
+#include "../client/client_handler.hpp"
 #include "../utils/utils.hpp"
 
 #include <algorithm>
@@ -11,7 +12,7 @@ void CommandDispatcher::register_command(const std::string &cmd, Handler handler
   m_handlers[to_upper(cmd)] = std::move(handler);
 }
 
-RESPValue CommandDispatcher::dispatch(const RESPValue &value, int client_fd) const
+RESPValue CommandDispatcher::dispatch(const RESPValue &value, ClientHandler &client) const
 {
   printCommand(value);
 
@@ -23,17 +24,17 @@ RESPValue CommandDispatcher::dispatch(const RESPValue &value, int client_fd) con
                      return elem.type == RESPValue::Type::BulkString;
                    }))
   {
-    return RESPValue::Error("invalid request");
+    return RESPValue::Error("ERR Protocol error");
   }
 
   std::string cmd = to_upper(value.array[0].str);
   auto it = m_handlers.find(cmd);
   if (it != m_handlers.end())
   {
-    return it->second(value, client_fd);
+    return it->second(value, client);
   }
 
-  return RESPValue::Error("unknown command");
+  return RESPValue::Error("ERR unknown command");
 }
 
 std::string CommandDispatcher::to_upper(const std::string &s)

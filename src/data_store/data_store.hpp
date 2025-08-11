@@ -20,6 +20,7 @@ public:
 
   RESPValue set(const std::string &key, const std::string &value, std::chrono::milliseconds ttl = std::chrono::milliseconds(0));
   RESPValue get(const std::string &key);
+  RESPValue incr(const std::string &key);
 
   RESPValue llen(const std::string &key);
   RESPValue rpush(const std::string &key, const std::vector<std::string> &values);

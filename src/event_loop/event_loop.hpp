@@ -2,7 +2,7 @@
 
 #include "blocking_manager.hpp"
 #include "../command/command_dispatcher.hpp"
-#include "../handler/client_handler.hpp"
+#include "../client/client_handler.hpp"
 #include "../socket/socket.hpp"
 #include <map>
 #include <atomic>
