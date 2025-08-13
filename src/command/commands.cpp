@@ -8,20 +8,9 @@ namespace commands
   {
     auto adapt = [&dispatcher](auto func)
     {
-      return [func, &dispatcher](const RESPValue &value, ClientHandler &client) -> RESPValue
+      return [&dispatcher, func](const RESPValue &value, ClientHandler &client) -> RESPValue
       {
-        if constexpr (std::is_invocable_v<decltype(func), const RESPValue &>)
-          return func(value);
-        else if constexpr (std::is_invocable_v<decltype(func), const RESPValue &, DataStore &>)
-          return func(value, dispatcher.get_store());
-        else if constexpr (std::is_invocable_v<decltype(func), const RESPValue &, DataStore &, BlockingManager &>)
-          return func(value, dispatcher.get_store(), dispatcher.get_blocking_manager());
-        else if constexpr (std::is_invocable_v<decltype(func), const RESPValue &, DataStore &, BlockingManager &, int>)
-          return func(value, dispatcher.get_store(), dispatcher.get_blocking_manager(), client.get_fd());
-        else if constexpr (std::is_invocable_v<decltype(func), const RESPValue &, ClientHandler &>)
-          return func(value, client);
-        else if constexpr (std::is_invocable_v<decltype(func), const RESPValue &, ClientHandler &, CommandDispatcher &>)
-          return func(value, client, dispatcher);
+        return func(value, client, dispatcher);
       };
     };
 
@@ -49,9 +38,11 @@ namespace commands
     dispatcher.register_command("MULTI", adapt(commands::multi));
     dispatcher.register_command("EXEC", adapt(commands::exec));
     dispatcher.register_command("DISCARD", adapt(commands::discard));
+
+    dispatcher.register_command("CONFIG", adapt(commands::config));
   }
 
-  RESPValue ping(const RESPValue &value)
+  RESPValue ping(const RESPValue &value, ClientHandler &client, CommandDispatcher &dispatcher)
   {
     if (value.array.size() == 1)
       return RESPValue::SimpleString("PONG");
@@ -60,32 +51,35 @@ namespace commands
     return RESPValue::Error("ERR wrong number of arguments for 'ping' command");
   }
 
-  RESPValue command(const RESPValue &)
+  RESPValue command(const RESPValue &value, ClientHandler &client, CommandDispatcher &dispatcher)
   {
     return RESPValue::Array({});
   }
 
-  RESPValue echo(const RESPValue &value)
+  RESPValue echo(const RESPValue &value, ClientHandler &client, CommandDispatcher &dispatcher)
   {
     if (value.array.size() != 2)
       return RESPValue::Error("ERR wrong number of arguments for 'echo' command");
     return value.array[1];
   }
 
-  RESPValue type(const RESPValue &value, DataStore &store)
+  RESPValue type(const RESPValue &value, ClientHandler &client, CommandDispatcher &dispatcher)
   {
     // TYPE key
     if (value.array.size() != 2)
       return RESPValue::Error("ERR wrong number of arguments for 'type' command");
+
+    DataStore &store = dispatcher.get_store();
     return store.type(value.array[1].str);
   }
 
-  RESPValue set(const RESPValue &value, DataStore &store)
+  RESPValue set(const RESPValue &value, ClientHandler &, CommandDispatcher &dispatcher)
   {
     // SET key value [PX milliseconds]
     if (value.array.size() != 3 && value.array.size() != 5)
       return RESPValue::Error("ERR wrong number of arguments for 'set' command");
 
+    DataStore &store = dispatcher.get_store();
     if (value.array.size() == 3)
     {
       return store.set(value.array[1].str, value.array[2].str);
@@ -107,31 +101,36 @@ namespace commands
     }
   }
 
-  RESPValue get(const RESPValue &value, DataStore &store)
+  RESPValue get(const RESPValue &value, ClientHandler &client, CommandDispatcher &dispatcher)
   {
     if (value.array.size() != 2)
       return RESPValue::Error("ERR wrong number of arguments for 'get' command");
+
+    DataStore &store = dispatcher.get_store();
     return store.get(value.array[1].str);
   }
 
-  RESPValue incr(const RESPValue &value, DataStore &store)
+  RESPValue incr(const RESPValue &value, ClientHandler &client, CommandDispatcher &dispatcher)
   {
     if (value.array.size() != 2)
       return RESPValue::Error("ERR wrong number of arguments for 'incr' command");
+
+    DataStore &store = dispatcher.get_store();
     return store.incr(value.array[1].str);
   }
 
-  RESPValue llen(const RESPValue &value, DataStore &store)
+  RESPValue llen(const RESPValue &value, ClientHandler &client, CommandDispatcher &dispatcher)
   {
     // LLEN key
     if (value.array.size() != 2)
       return RESPValue::Error("ERR wrong number of arguments for 'llen' command");
 
+    DataStore &store = dispatcher.get_store();
     const std::string &key = value.array[1].str;
     return store.llen(key);
   }
 
-  RESPValue rpush(const RESPValue &value, DataStore &store, BlockingManager &blocking_manager)
+  RESPValue rpush(const RESPValue &value, ClientHandler &client, CommandDispatcher &dispatcher)
   {
     // RPUSH key element [element ...]
     if (value.array.size() < 3)
@@ -142,16 +141,18 @@ namespace commands
     for (size_t i = 2; i < value.array.size(); ++i)
       values.push_back(value.array[i].str);
 
+    DataStore &store = dispatcher.get_store();
     RESPValue result = store.rpush(key, values);
     if (result.type != RESPValue::Type::Error)
     {
+      BlockingManager &blocking_manager = dispatcher.get_blocking_manager();
       blocking_manager.unblock_first_client_for_key(key);
     }
 
     return result;
   }
 
-  RESPValue lpush(const RESPValue &value, DataStore &store, BlockingManager &blocking_manager)
+  RESPValue lpush(const RESPValue &value, ClientHandler &client, CommandDispatcher &dispatcher)
   {
     // LPUSH key element [element ...]
     if (value.array.size() < 3)
@@ -162,16 +163,18 @@ namespace commands
     for (size_t i = 2; i < value.array.size(); ++i)
       values.push_back(value.array[i].str);
 
+    DataStore &store = dispatcher.get_store();
     RESPValue result = store.lpush(key, values);
     if (result.type != RESPValue::Type::Error)
     {
+      BlockingManager &blocking_manager = dispatcher.get_blocking_manager();
       blocking_manager.unblock_first_client_for_key(key);
     }
 
     return result;
   }
 
-  RESPValue lrange(const RESPValue &value, DataStore &store)
+  RESPValue lrange(const RESPValue &value, ClientHandler &client, CommandDispatcher &dispatcher)
   {
     // LRANGE key start stop
     if (value.array.size() != 4)
@@ -182,6 +185,8 @@ namespace commands
     {
       int64_t start = std::stoll(value.array[2].str);
       int64_t stop = std::stoll(value.array[3].str);
+
+      DataStore &store = dispatcher.get_store();
       return store.lrange(key, start, stop);
     }
     catch (...)
@@ -190,7 +195,7 @@ namespace commands
     }
   }
 
-  RESPValue lpop(const RESPValue &value, DataStore &store)
+  RESPValue lpop(const RESPValue &value, ClientHandler &client, CommandDispatcher &dispatcher)
   {
     // LPOP key [count]
     if (value.array.size() < 2 || value.array.size() > 3)
@@ -215,10 +220,11 @@ namespace commands
         return RESPValue::Array({});
     }
 
+    DataStore &store = dispatcher.get_store();
     return store.lpop(key, count);
   }
 
-  RESPValue blpop(const RESPValue &value, DataStore &store, BlockingManager &blocking_manager, int client_fd)
+  RESPValue blpop(const RESPValue &value, ClientHandler &client, CommandDispatcher &dispatcher)
   {
     // BLPOP key timeout
     if (value.array.size() != 3)
@@ -237,12 +243,14 @@ namespace commands
       return RESPValue::Error("ERR timeout is not a float or out of range");
     }
 
+    DataStore &store = dispatcher.get_store();
     RESPValue result = store.blpop(key);
 
     if (result.type == RESP_BLOCK_CLIENT.type && result.str == RESP_BLOCK_CLIENT.str)
     {
       // Register this client as waiting
-      blocking_manager.block_client(client_fd, {key}, timeout * 1000);
+      BlockingManager &blocking_manager = dispatcher.get_blocking_manager();
+      blocking_manager.block_client(client.get_fd(), {key}, timeout * 1000);
       RESPValue command = RESPValue::Array({RESPValue::BulkString("LPOP"), RESPValue::BulkString(key)});
 
       return RESPValue::Array({
@@ -254,7 +262,7 @@ namespace commands
     return result;
   }
 
-  RESPValue xadd(const RESPValue &value, DataStore &store, BlockingManager &blocking_manager)
+  RESPValue xadd(const RESPValue &value, ClientHandler &client, CommandDispatcher &dispatcher)
   {
     // XADD key id field1 value1 [field2 value2 ...]
     if (value.array.size() < 5 || (value.array.size() - 3) % 2 != 0)
@@ -266,18 +274,21 @@ namespace commands
 
     const std::string &key = value.array[1].str;
     const std::string &id_str = value.array[2].str;
+
+    DataStore &store = dispatcher.get_store();
     RESPValue result = store.xadd(key, id_str, entry);
 
     if (result.type != RESPValue::Type::Error)
     {
       // Let main loop re-process unblocked clients
+      BlockingManager &blocking_manager = dispatcher.get_blocking_manager();
       blocking_manager.unblock_clients_for_key(key);
     }
 
     return result;
   }
 
-  RESPValue xrange(const RESPValue &value, DataStore &store)
+  RESPValue xrange(const RESPValue &value, ClientHandler &client, CommandDispatcher &dispatcher)
   {
     // XRANGE key start end [COUNT count]
     if (value.array.size() < 4)
@@ -299,10 +310,11 @@ namespace commands
       }
     }
 
+    DataStore &store = dispatcher.get_store();
     return store.xrange(value.array[1].str, value.array[2].str, value.array[3].str, count);
   }
 
-  RESPValue xread(const RESPValue &value, DataStore &store, BlockingManager &blocking_manager, int client_fd)
+  RESPValue xread(const RESPValue &value, ClientHandler &client, CommandDispatcher &dispatcher)
   {
     // Basic: XREAD STREAMS key id
     // Full: XREAD [COUNT count] [BLOCK ms] STREAMS key [key ...] id [id ...]
@@ -347,6 +359,8 @@ namespace commands
     keys.reserve(num_streams);
     ids.reserve(num_streams);
 
+    DataStore &store = dispatcher.get_store();
+
     // The first half are keys, the second half are IDs
     for (size_t i = 0; i < num_streams; ++i)
     {
@@ -372,7 +386,8 @@ namespace commands
     if (result.type == RESP_BLOCK_CLIENT.type && result.str == RESP_BLOCK_CLIENT.str)
     {
       // Register this client as waiting
-      blocking_manager.block_client(client_fd, keys, block_ms);
+      BlockingManager &blocking_manager = dispatcher.get_blocking_manager();
+      blocking_manager.block_client(client.get_fd(), keys, block_ms);
 
       std::vector<RESPValue> commands;
       commands.reserve(value.array.size());
@@ -398,7 +413,7 @@ namespace commands
     return result;
   }
 
-  RESPValue multi(const RESPValue &, ClientHandler &client)
+  RESPValue multi(const RESPValue &value, ClientHandler &client, CommandDispatcher &dispatcher)
   {
     if (client.is_in_transaction())
       return RESPValue::Error("ERR MULTI calls can not be nested");
@@ -407,7 +422,7 @@ namespace commands
     return RESPValue::SimpleString("OK");
   }
 
-  RESPValue discard(const RESPValue &, ClientHandler &client)
+  RESPValue discard(const RESPValue &value, ClientHandler &client, CommandDispatcher &dispatcher)
   {
     if (!client.is_in_transaction())
       return RESPValue::Error("ERR DISCARD without MULTI");
@@ -416,7 +431,7 @@ namespace commands
     return RESPValue::SimpleString("OK");
   }
 
-  RESPValue exec(const RESPValue &, ClientHandler &client, CommandDispatcher &dispatcher)
+  RESPValue exec(const RESPValue &value, ClientHandler &client, CommandDispatcher &dispatcher)
   {
     if (!client.is_in_transaction())
       return RESPValue::Error("ERR EXEC without MULTI");
@@ -432,6 +447,30 @@ namespace commands
 
     client.clear_transaction_state();
     return RESPValue::Array(std::move(results));
+  }
+
+  RESPValue config(const RESPValue &value, ClientHandler &client, CommandDispatcher &dispatcher)
+  {
+    // CONFIG GET parameter
+    if (value.array.size() != 3)
+      return RESPValue::Error("ERR wrong number of arguments for 'config' command");
+
+    std::string sub = to_upper(value.array[1].str);
+    if (sub != "GET")
+      return RESPValue::Error("ERR unknown subcommand" + sub);
+
+    std::string param = value.array[2].str;
+    const Config &config = dispatcher.get_config();
+    if (param == "dir")
+    {
+      return RESPValue::Array({RESPValue::BulkString(param), RESPValue::BulkString(config.dir)});
+    }
+    else if (param == "dbfilename")
+    {
+      return RESPValue::Array({RESPValue::BulkString(param), RESPValue::BulkString(config.dbfilename)});
+    }
+
+    return RESPValue::Array({});
   }
 }
 

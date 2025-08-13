@@ -24,6 +24,16 @@ int main(int argc, char *argv[])
   std::cout << std::unitbuf;
   std::cerr << std::unitbuf;
 
+  Config config;
+  for (int i = 1; i < argc; ++i)
+  {
+    std::string a = argv[i];
+    if (a == "--dir" && i + 1 < argc)
+      config.dir = argv[++i];
+    else if (a == "--dbfilename" && i + 1 < argc)
+      config.dbfilename = argv[++i];
+  }
+
   int server_fd = set_up();
   if (server_fd < 0)
     return -1;
@@ -31,7 +41,7 @@ int main(int argc, char *argv[])
 
   DataStore store;
   BlockingManager blocking_manager;
-  CommandDispatcher dispatcher(store, blocking_manager);
+  CommandDispatcher dispatcher(store, blocking_manager, config);
   commands::register_all_commands(dispatcher);
 
   std::unique_ptr<EventLoop> event_loop(EventLoop::create());

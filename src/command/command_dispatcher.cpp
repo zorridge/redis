@@ -4,8 +4,8 @@
 
 #include <algorithm>
 
-CommandDispatcher::CommandDispatcher(DataStore &store, BlockingManager &blocking_manager)
-    : m_store(store), m_blocking_manager(blocking_manager) {}
+CommandDispatcher::CommandDispatcher(DataStore &store, BlockingManager &blocking_manager, Config &config)
+    : m_store(store), m_blocking_manager(blocking_manager), m_config(config) {}
 
 void CommandDispatcher::register_command(const std::string &cmd, Handler handler)
 {

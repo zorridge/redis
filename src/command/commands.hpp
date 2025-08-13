@@ -10,32 +10,35 @@ namespace commands
 {
   void register_all_commands(CommandDispatcher &dispatcher);
 
-  RESPValue ping(const RESPValue &value);
-  RESPValue command(const RESPValue &value);
-  RESPValue echo(const RESPValue &value);
+  RESPValue ping(const RESPValue &value, ClientHandler &client, CommandDispatcher &dispatcher);
+  RESPValue command(const RESPValue &value, ClientHandler &client, CommandDispatcher &dispatcher);
+  RESPValue echo(const RESPValue &value, ClientHandler &client, CommandDispatcher &dispatcher);
 
-  RESPValue type(const RESPValue &value, DataStore &store);
+  RESPValue type(const RESPValue &value, ClientHandler &client, CommandDispatcher &dispatcher);
 
   // String
-  RESPValue set(const RESPValue &value, DataStore &store);
-  RESPValue get(const RESPValue &value, DataStore &store);
-  RESPValue incr(const RESPValue &value, DataStore &store);
+  RESPValue set(const RESPValue &value, ClientHandler &client, CommandDispatcher &dispatcher);
+  RESPValue get(const RESPValue &value, ClientHandler &client, CommandDispatcher &dispatcher);
+  RESPValue incr(const RESPValue &value, ClientHandler &client, CommandDispatcher &dispatcher);
 
   // List
-  RESPValue llen(const RESPValue &value, DataStore &store);
-  RESPValue rpush(const RESPValue &value, DataStore &store, BlockingManager &blocking_manager);
-  RESPValue lpush(const RESPValue &value, DataStore &store, BlockingManager &blocking_manager);
-  RESPValue lrange(const RESPValue &value, DataStore &store);
-  RESPValue lpop(const RESPValue &value, DataStore &store);
-  RESPValue blpop(const RESPValue &value, DataStore &store, BlockingManager &blocking_manager, int client_fd);
+  RESPValue llen(const RESPValue &value, ClientHandler &client, CommandDispatcher &dispatcher);
+  RESPValue rpush(const RESPValue &value, ClientHandler &client, CommandDispatcher &dispatcher);
+  RESPValue lpush(const RESPValue &value, ClientHandler &client, CommandDispatcher &dispatcher);
+  RESPValue lrange(const RESPValue &value, ClientHandler &client, CommandDispatcher &dispatcher);
+  RESPValue lpop(const RESPValue &value, ClientHandler &client, CommandDispatcher &dispatcher);
+  RESPValue blpop(const RESPValue &value, ClientHandler &client, CommandDispatcher &dispatcher);
 
   // Stream
-  RESPValue xadd(const RESPValue &value, DataStore &store, BlockingManager &blocking_manager);
-  RESPValue xrange(const RESPValue &value, DataStore &store);
-  RESPValue xread(const RESPValue &value, DataStore &store, BlockingManager &blocking_manager, int client_fd);
+  RESPValue xadd(const RESPValue &value, ClientHandler &client, CommandDispatcher &dispatcher);
+  RESPValue xrange(const RESPValue &value, ClientHandler &client, CommandDispatcher &dispatcher);
+  RESPValue xread(const RESPValue &value, ClientHandler &client, CommandDispatcher &dispatcher);
 
   // Transactions
-  RESPValue multi(const RESPValue &, ClientHandler &);
-  RESPValue exec(const RESPValue &, ClientHandler &, CommandDispatcher &);
-  RESPValue discard(const RESPValue &, ClientHandler &);
+  RESPValue multi(const RESPValue &value, ClientHandler &client, CommandDispatcher &dispatcher);
+  RESPValue discard(const RESPValue &value, ClientHandler &client, CommandDispatcher &dispatcher);
+  RESPValue exec(const RESPValue &value, ClientHandler &client, CommandDispatcher &dispatcher);
+
+  // Configs
+  RESPValue config(const RESPValue &value, ClientHandler &client, CommandDispatcher &dispatcher);
 }
