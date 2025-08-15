@@ -70,6 +70,12 @@ flowchart TB
 * `XRANGE`
 * `XREAD`
 
+#### Pub/Sub
+> I also homebrewed Kafka.
+* `SUBSCRIBE`
+* `UNSUBSCRIBE`
+* `PUBLISH`
+
 #### Transactions
 > For rollback, please consult your nearest relational database.
 * `MULTI`
@@ -96,6 +102,7 @@ redis-cli -h localhost -p 6379
 ```
 
 > Yes, I am reinventing the wheel. But at least it’s not in JavaScript.
+
 
 
 
