@@ -6,32 +6,42 @@ A project focused on emulating Redis’s high efficiency and performance, utiliz
 
 ```mermaid
 flowchart TB
-    %% Define Nodes with Appropriate Shapes
-    A@{ shape: processes, label: "Clients" }
-    B@{ shape: lean-r, label: "TCP Network Layer" }
-    C@{ shape: rounded, label: "I/O Multiplexing\n(kqueue/epoll)" }
-    D@{ shape: rounded, label: "Main Event Loop" }
-    E@{ shape: rounded, label: "Command Dispatcher" }
-    F@{ shape: database, label: "Data Store" }
-    G@{ shape: rounded, label: "Blocking Manager" }
-    H@{ shape: rounded, label: "Client Transaction Queue" }
+    clients@{ shape: processes, label: "Clients" }
+    tcp_layer@{ shape: lean-r, label: "TCP Network Layer" }
+    io_multiplexing@{ shape: rounded, label: "I/O Multiplexing\n(kqueue/epoll)" }
+    main_event_loop@{ shape: rounded, label: "Main Event Loop" }
+    command_dispatcher@{ shape: rounded, label: "Command Dispatcher" }
+    client_buffers@{ shape: cylinder, label: "Client Buffers" }
+    data_store@{ shape: database, label: "Data Store" }
+
+    subgraph aux["Auxiliary Components"]
+        direction TB
+        pubsub_manager@{ shape: rounded, label: "Pub/Sub Manager" }
+        blocking_manager@{ shape: rounded, label: "Blocking Manager" }
+        client_tx_queue@{ shape: rounded, label: "Client Transaction Queue" }
+    end
 
     %% Request Lifecycle
-    A <-- Request/Response --> B
-    B -- "New Event" --> C
-    C -- "Ready To Read" --> D
-    D -- "Parse & Execute" --> E
-    E -- "Execute" --> H
-    E -- "Read/Write Data" --> F
-    E -- "Block/Unblock Client" --> G
+    clients <-- Request/Response --> tcp_layer
+    tcp_layer -- "Mark Readable" --> io_multiplexing
+    io_multiplexing -- "New Event" --> main_event_loop
+    main_event_loop -- "Parse & Execute" --> command_dispatcher
+    command_dispatcher -- "Queue Response" --> client_buffers
+    command_dispatcher -- "Read/Write Data" --> data_store
+    command_dispatcher -- "Access" --> aux
+    pubsub_manager -- "Publish Message" --> client_buffers
+
 
     %% Response Lifecycle
-    G -- "Client Ready" --> D
-    D -- "Serialize Response" --> B
+    main_event_loop -- "Flush Buffers" --> tcp_layer
 
-    %% Highlighting Core Components
-    classDef core fill:#00897b,stroke-width:2px,color:#fff;
-    D:::core
+    classDef core fill:#00574b,stroke-width:2px,color:#fff;
+    main_event_loop:::core
+
+    classDef auxiliary fill:#00897b,stroke-width:1px,color:#fff;
+    pubsub_manager:::auxiliary
+    client_tx_queue:::auxiliary
+    blocking_manager:::auxiliary
 ```
 
 ## ✨ Features
@@ -86,6 +96,7 @@ redis-cli -h localhost -p 6379
 ```
 
 > Yes, I am reinventing the wheel. But at least it’s not in JavaScript.
+
 
 
 
