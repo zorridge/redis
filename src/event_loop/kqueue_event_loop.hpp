@@ -12,6 +12,7 @@ public:
            DataStore &store,
            CommandDispatcher &dispatcher,
            BlockingManager &blocking_manager,
+           PubSubManager &pubsub_manager,
            std::atomic<bool> &running) override;
 };
 

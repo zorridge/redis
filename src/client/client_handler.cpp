@@ -28,17 +28,28 @@ void ClientHandler::handle_read(CommandDispatcher &dispatcher)
   if (value.type == RESPValue::Type::Error)
   {
     std::string response = "-" + value.str + "\r\n";
-    send(get_fd(), response.c_str(), response.size(), 0);
+    queue_message(response);
     return;
   }
 
-  // Transaction logic
   std::string cmd_name = to_upper(value.array[0].str);
+
+  // ---------- Pub/sub ----------
+  if (is_subscriber_mode())
+  {
+    static const std::unordered_set<std::string> allowed = {"SUBSCRIBE", "UNSUBSCRIBE", "PSUBSCRIBE", "PUNSUBSCRIBE", "PING", "QUIT"};
+    if (allowed.find(cmd_name) == allowed.end())
+    {
+      queue_message(RESPSerializer::serialize(RESPValue::Error("ERR Can't execute '" + cmd_name + "' in subscribed mode")));
+      return;
+    }
+  }
+
+  // ---------- Transactions ----------
   if (m_in_transaction && cmd_name != "EXEC" && cmd_name != "DISCARD")
   {
     queue_command(value);
-    std::string response = RESPSerializer::serialize(RESPValue::SimpleString("QUEUED"));
-    send(m_client_fd.get(), response.c_str(), response.size(), 0);
+    queue_message(RESPSerializer::serialize(RESPValue::SimpleString("QUEUED")));
     return;
   }
 
@@ -54,8 +65,7 @@ void ClientHandler::handle_read(CommandDispatcher &dispatcher)
     return;
   }
 
-  std::string response = RESPSerializer::serialize(result);
-  send(get_fd(), response.c_str(), response.size(), 0);
+  queue_message(RESPSerializer::serialize(result));
 }
 
 void ClientHandler::handle_reprocess(CommandDispatcher &dispatcher)
@@ -76,10 +86,10 @@ void ClientHandler::handle_reprocess(CommandDispatcher &dispatcher)
     return;
   }
 
-  std::string response = RESPSerializer::serialize(result);
-  send(get_fd(), response.c_str(), response.size(), 0);
+  queue_message(RESPSerializer::serialize(result));
 }
 
+// ---------- Transactions ----------
 void ClientHandler::start_transaction()
 {
   m_in_transaction = true;
@@ -95,6 +105,63 @@ void ClientHandler::clear_transaction_state()
 {
   m_in_transaction = false;
   m_command_queue.clear();
+}
+
+// ---------- Pub/sub ----------
+bool ClientHandler::add_subscription(const std::string &channel)
+{
+  auto [it, inserted] = m_subscribed_channels.insert(channel);
+  return inserted;
+}
+
+bool ClientHandler::remove_subscription(const std::string &channel)
+{
+  return m_subscribed_channels.erase(channel) > 0;
+}
+
+size_t ClientHandler::clear_subscriptions()
+{
+  size_t n = m_subscribed_channels.size();
+  m_subscribed_channels.clear();
+  return n;
+}
+
+bool ClientHandler::is_subscriber_mode() const
+{
+  return !m_subscribed_channels.empty();
+}
+
+// ---------- Pub/Sub send helpers ----------
+bool ClientHandler::send_pubsub_message(const std::string &type, const std::string &channel, const RESPValue &payload)
+{
+  RESPValue msg = RESPValue::Array({RESPValue::BulkString(type), RESPValue::BulkString(channel), payload});
+  std::string response = RESPSerializer::serialize(msg);
+
+  queue_message(response);
+  return true;
+}
+
+void ClientHandler::queue_message(const std::string &msg)
+{
+  m_outgoing_buffer += msg;
+}
+
+bool ClientHandler::has_pending_output() const
+{
+  return !m_outgoing_buffer.empty();
+}
+
+bool ClientHandler::flush_output()
+{
+  while (!m_outgoing_buffer.empty())
+  {
+    ssize_t n = ::send(get_fd(), m_outgoing_buffer.data(), m_outgoing_buffer.size(), 0);
+    if (n > 0)
+      m_outgoing_buffer.erase(0, n);
+    else
+      return false;
+  }
+  return true;
 }
 
 std::string ClientHandler::to_upper(const std::string &s)

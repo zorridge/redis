@@ -12,6 +12,7 @@ void EpollEventLoop::run(SocketRAII &server_socket,
                          DataStore &store,
                          CommandDispatcher &dispatcher,
                          BlockingManager &blocking_manager,
+                         PubSubManager &pubsub_manager,
                          std::atomic<bool> &running)
 {
   // 1. Create a new epoll instance
@@ -41,7 +42,7 @@ void EpollEventLoop::run(SocketRAII &server_socket,
 
   while (running)
   {
-    // The timeout for epoll_wait is an integer in milliseconds.
+    // The timeout for epoll_wait is an integer in milliseconds
     int timeout_ms = 1000; // 1 second
 
     // 3. Wait for events
@@ -59,11 +60,23 @@ void EpollEventLoop::run(SocketRAII &server_socket,
     {
       int event_fd = events[i].data.fd;
 
-      // With epoll, disconnection is often signaled by EPOLLHUP (hang-up) or EPOLLERR.
+      // With epoll, disconnection is often signaled by EPOLLHUP (hang-up) or EPOLLERR
       if (events[i].events & (EPOLLHUP | EPOLLERR))
       {
         std::cout << "\033[33m[Client " << event_fd << "] Disconnected\033[0m\n";
-        clients.erase(event_fd);
+
+        // Remove client from all pub/sub channels
+        auto it = clients.find(event_fd);
+        if (it != clients.end())
+        {
+          pubsub_manager.unsubscribe_all(&it->second);
+          blocking_manager.unblock_client(event_fd);
+
+          // Remove client from epoll
+          epoll_ctl(event_queue_fd, EPOLL_CTL_DEL, event_fd, nullptr);
+
+          clients.erase(event_fd); // RAII closes socket
+        }
       }
       else if (event_fd == server_socket.get())
       {
@@ -93,6 +106,23 @@ void EpollEventLoop::run(SocketRAII &server_socket,
           it->second.handle_read(dispatcher);
         }
       }
+      else if (events[i].events & EPOLLOUT)
+      {
+        auto it = clients.find(event_fd);
+        if (it != clients.end())
+        {
+          bool sent_all = it->second.flush_output();
+          if (sent_all)
+          {
+            // Disable EPOLLOUT if buffer is empty
+            struct epoll_event ev;
+            ev.events = EPOLLIN;
+            ev.data.fd = event_fd;
+            epoll_ctl(event_queue_fd, EPOLL_CTL_MOD, event_fd, &ev);
+          }
+          // else keep EPOLLOUT enabled
+        }
+      }
     }
 
     // 5. Re-process clients that became ready
@@ -112,16 +142,31 @@ void EpollEventLoop::run(SocketRAII &server_socket,
 
     // 6. Process timed-out clients
     std::vector<int> timed_out_fds = blocking_manager.find_and_clear_timed_out_clients();
-    for (int fd : timed_out_fds)
+    if (!timed_out_fds.empty())
     {
-      auto it = clients.find(fd);
-      if (it != clients.end())
+      for (int fd : timed_out_fds)
       {
-        std::cout << "\033[33m[Client " << fd << "] Timed out\033[0m\n";
-        const char *nil_reply = "*-1\r\n";
-        send(fd, nil_reply, 5, 0);
+        auto it = clients.find(fd);
+        if (it != clients.end())
+        {
+          std::cout << "\033[33m[Client " << fd << "] Timed out\033[0m\n";
+          const char *nil_reply = "*-1\r\n";
+          it->second.queue_message(std::string(nil_reply, 5));
+        }
       }
     }
+
+    // 7. Sweep all clients for pending output after reads/reprocess/timed-out
+    for (auto &[fd, client] : clients)
+    {
+      if (client.has_pending_output())
+      {
+        struct epoll_event ev;
+        ev.events = EPOLLIN | EPOLLOUT;
+        ev.data.fd = fd;
+        epoll_ctl(event_queue_fd, EPOLL_CTL_MOD, fd, &ev);
+      }
+    };
   }
 }
 

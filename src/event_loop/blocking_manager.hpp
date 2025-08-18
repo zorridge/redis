@@ -23,6 +23,7 @@ public:
   };
 
   void block_client(int client_fd, const std::vector<std::string> &keys, int64_t block_ms);
+  void unblock_client(int client_fd);
   void unblock_clients_for_key(const std::string &key);
   void unblock_first_client_for_key(const std::string &key);
   std::vector<int> find_and_clear_timed_out_clients();
