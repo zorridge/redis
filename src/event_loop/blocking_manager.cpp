@@ -22,6 +22,41 @@ void BlockingManager::block_client(int client_fd, const std::vector<std::string>
     m_key_to_waiters[key].push(client_fd);
 }
 
+void BlockingManager::unblock_client(int client_fd)
+{
+  // Remove from details map
+  auto details_it = m_waiter_details.find(client_fd);
+  if (details_it == m_waiter_details.end())
+    return;
+
+  // Remove from all key queues
+  const auto &keys = details_it->second.keys;
+  for (const auto &key : keys)
+  {
+    auto key_it = m_key_to_waiters.find(key);
+    if (key_it != m_key_to_waiters.end())
+    {
+      std::queue<int> &waiters = key_it->second;
+      std::queue<int> new_queue;
+      while (!waiters.empty())
+      {
+        int fd = waiters.front();
+        waiters.pop();
+        if (fd != client_fd)
+          new_queue.push(fd);
+      }
+      key_it->second = std::move(new_queue);
+
+      // If queue is empty after removal, erase key
+      if (key_it->second.empty())
+        m_key_to_waiters.erase(key_it);
+    }
+  }
+
+  // Remove from details
+  m_waiter_details.erase(details_it);
+}
+
 void BlockingManager::unblock_clients_for_key(const std::string &key)
 {
   auto it = m_key_to_waiters.find(key);

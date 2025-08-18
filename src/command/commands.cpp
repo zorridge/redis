@@ -40,12 +40,23 @@ namespace commands
     dispatcher.register_command("DISCARD", adapt(commands::discard));
 
     dispatcher.register_command("CONFIG", adapt(commands::config));
+
+    dispatcher.register_command("SUBSCRIBE", adapt(commands::subscribe));
+    dispatcher.register_command("UNSUBSCRIBE", adapt(commands::unsubscribe));
+    dispatcher.register_command("PUBLISH", adapt(commands::publish));
   }
 
   RESPValue ping(const RESPValue &value, ClientHandler &client, CommandDispatcher &dispatcher)
   {
     if (value.array.size() == 1)
-      return RESPValue::SimpleString("PONG");
+    {
+      if (client.is_subscriber_mode())
+      {
+        return RESPValue::Array({RESPValue::BulkString("pong"), RESPValue::BulkString("")});
+      }
+      else
+        return RESPValue::SimpleString("PONG");
+    }
     if (value.array.size() == 2)
       return value.array[1];
     return RESPValue::Error("ERR wrong number of arguments for 'ping' command");
@@ -471,6 +482,94 @@ namespace commands
     }
 
     return RESPValue::Array({});
+  }
+
+  RESPValue subscribe(const RESPValue &value, ClientHandler &client, CommandDispatcher &dispatcher)
+  {
+    // SUBSCRIBE channel [channel ...]
+    if (value.array.size() < 2)
+      return RESPValue::Error("ERR wrong number of arguments for 'subscribe' command");
+
+    PubSubManager &pubsub = dispatcher.get_pubsub_manager();
+    int fd = client.get_fd();
+    std::vector<RESPValue> confirmations;
+
+    for (size_t i = 1; i < value.array.size(); ++i)
+    {
+      const std::string &channel = value.array[i].str;
+      client.add_subscription(channel);
+      pubsub.subscribe(&client, channel);
+
+      size_t count = client.get_subscribed_channels().size();
+      confirmations.push_back(RESPValue::Array({RESPValue::BulkString("subscribe"),
+                                                RESPValue::BulkString(channel),
+                                                RESPValue::Integer(static_cast<int64_t>(count))}));
+    }
+
+    return confirmations.size() == 1 ? confirmations[0] : RESPValue::Array(std::move(confirmations));
+  }
+
+  RESPValue unsubscribe(const RESPValue &value, ClientHandler &client, CommandDispatcher &dispatcher)
+  {
+    // UNSUBSCRIBE channel [channel ...]
+    PubSubManager &pubsub = dispatcher.get_pubsub_manager();
+    int fd = client.get_fd();
+    std::vector<RESPValue> confirmations;
+
+    // If no channels specified, unsubscribe from all
+    if (value.array.size() == 1)
+    {
+      const auto &channels = client.get_subscribed_channels();
+      if (channels.empty())
+      {
+        confirmations.push_back(RESPValue::Array({RESPValue::BulkString("unsubscribe"),
+                                                  RESPValue::BulkString(""),
+                                                  RESPValue::Integer(0)}));
+
+        return RESPValue::Array(std::move(confirmations));
+      }
+
+      std::vector<std::string> channels_copy(channels.begin(), channels.end());
+      for (const std::string &channel : channels_copy)
+      {
+        client.remove_subscription(channel);
+        pubsub.unsubscribe(&client, channel);
+        size_t count = client.get_subscribed_channels().size();
+        confirmations.push_back(RESPValue::Array({RESPValue::BulkString("unsubscribe"),
+                                                  RESPValue::BulkString(channel),
+                                                  RESPValue::Integer(static_cast<int64_t>(count))}));
+      }
+
+      return RESPValue::Array(std::move(confirmations));
+    }
+
+    // Unsubscribe from specified channels
+    for (size_t i = 1; i < value.array.size(); ++i)
+    {
+      const std::string &channel = value.array[i].str;
+      client.remove_subscription(channel);
+      pubsub.unsubscribe(&client, channel);
+      size_t count = client.get_subscribed_channels().size();
+      confirmations.push_back(RESPValue::Array({RESPValue::BulkString("unsubscribe"),
+                                                RESPValue::BulkString(channel),
+                                                RESPValue::Integer(static_cast<int64_t>(count))}));
+    }
+
+    return RESPValue::Array(std::move(confirmations));
+  }
+
+  RESPValue publish(const RESPValue &value, ClientHandler &client, CommandDispatcher &dispatcher)
+  {
+    // PUBLISH channel message
+    if (value.array.size() != 3)
+      return RESPValue::Error("ERR wrong number of arguments for 'publish' command");
+
+    PubSubManager &pubsub = dispatcher.get_pubsub_manager();
+    const std::string &channel = value.array[1].str;
+    const std::string &message = value.array[2].str;
+    int receivers = pubsub.publish(channel, message);
+
+    return RESPValue::Integer(receivers);
   }
 }
 

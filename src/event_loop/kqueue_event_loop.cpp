@@ -23,6 +23,7 @@ void KqueueEventLoop::run(SocketRAII &server_socket,
                           DataStore &store,
                           CommandDispatcher &dispatcher,
                           BlockingManager &blocking_manager,
+                          PubSubManager &pubsub_manager,
                           std::atomic<bool> &running)
 {
   // 1. Create a new kqueue
@@ -66,7 +67,18 @@ void KqueueEventLoop::run(SocketRAII &server_socket,
       if (events[i].flags & EV_EOF)
       {
         std::cout << "\033[33m[Client " << event_fd << "] Disconnected\033[0m\n";
-        clients.erase(event_fd); // RAII will close the socket via the ClientHandler
+
+        auto it = clients.find(event_fd);
+        if (it != clients.end())
+        {
+          dispatcher.get_pubsub_manager().unsubscribe_all(&it->second);
+          blocking_manager.unblock_client(event_fd);
+
+          // Remove from kqueue
+          update_kqueue_event(event_queue_fd, event_fd, EVFILT_READ, EV_DELETE);
+
+          clients.erase(it); // RAII closes socket
+        }
       }
       else if (event_fd == server_socket.get())
       {
@@ -92,6 +104,18 @@ void KqueueEventLoop::run(SocketRAII &server_socket,
         if (it != clients.end())
           it->second.handle_read(dispatcher);
       }
+      else if (events[i].filter == EVFILT_WRITE)
+      {
+        auto it = clients.find(event_fd);
+        if (it != clients.end())
+        {
+          bool sent_all = it->second.flush_output();
+          if (sent_all)
+            // Buffer is empty, disable EVFILT_WRITE for this client
+            update_kqueue_event(event_queue_fd, event_fd, EVFILT_WRITE, EV_DELETE);
+          // else keep writable event enabled
+        }
+      }
     }
 
     // 5. Re-process clients that became ready
@@ -109,15 +133,26 @@ void KqueueEventLoop::run(SocketRAII &server_socket,
 
     // 6. Process timed-out clients
     std::vector<int> timed_out_fds = blocking_manager.find_and_clear_timed_out_clients();
-    for (int fd : timed_out_fds)
+    if (!timed_out_fds.empty())
     {
-      auto it = clients.find(fd);
-      if (it != clients.end())
+      for (int fd : timed_out_fds)
       {
-        std::cout << "\033[33m[Client " << fd << "] Timed out\033[0m\n";
-        const char *nil_reply = "*-1\r\n";
-        send(fd, nil_reply, 5, 0);
+        auto it = clients.find(fd);
+        if (it != clients.end())
+        {
+          std::cout << "\033[33m[Client " << fd << "] Timed out\033[0m\n";
+          const char *nil_reply = "*-1\r\n";
+          send(fd, nil_reply, 5, 0);
+        }
       }
+    }
+
+    // 7. Sweep all clients for pending output after reads/reprocess/timed-out
+    for (auto &[fd, client] : clients)
+    {
+      if (client.has_pending_output())
+        // Mark client as writable
+        update_kqueue_event(event_queue_fd, fd, EVFILT_WRITE, EV_ADD | EV_ENABLE);
     }
   }
 }

@@ -41,4 +41,9 @@ namespace commands
 
   // Configs
   RESPValue config(const RESPValue &value, ClientHandler &client, CommandDispatcher &dispatcher);
+
+  // Pub/sub
+  RESPValue subscribe(const RESPValue &value, ClientHandler &client, CommandDispatcher &dispatcher);
+  RESPValue unsubscribe(const RESPValue &value, ClientHandler &client, CommandDispatcher &dispatcher);
+  RESPValue publish(const RESPValue &value, ClientHandler &client, CommandDispatcher &dispatcher);
 }

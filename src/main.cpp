@@ -1,9 +1,10 @@
 #include "command/command_dispatcher.hpp"
 #include "command/commands.hpp"
 #include "data_store/data_store.hpp"
-#include "socket/socket.hpp"
 #include "event_loop/blocking_manager.hpp"
 #include "event_loop/event_loop.hpp"
+#include "pubsub/pubsub_manager.hpp"
+#include "socket/socket.hpp"
 
 #include <atomic>
 #include <csignal>
@@ -41,7 +42,8 @@ int main(int argc, char *argv[])
 
   DataStore store;
   BlockingManager blocking_manager;
-  CommandDispatcher dispatcher(store, blocking_manager, config);
+  PubSubManager pubsub_manager;
+  CommandDispatcher dispatcher(store, blocking_manager, config, pubsub_manager);
   commands::register_all_commands(dispatcher);
 
   std::unique_ptr<EventLoop> event_loop(EventLoop::create());
@@ -52,7 +54,7 @@ int main(int argc, char *argv[])
   }
 
   // Run the main event loop
-  event_loop->run(server_socket, store, dispatcher, blocking_manager, running);
+  event_loop->run(server_socket, store, dispatcher, blocking_manager, pubsub_manager, running);
 
   std::cout << "\033[35m[Server] Shutting down\033[0m\n";
   return 0;
