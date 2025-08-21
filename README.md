@@ -1,5 +1,7 @@
 # Redis
 
+[![Web Terminal](https://img.shields.io/badge/Web%20Terminal-redis.ziheng.dev-ff4438?style=for-the-badge)](https://redis.ziheng.dev/)
+
 > ... but homebrewed (and _slightly_ more fragile) in C++.
 
 A project focused on emulating Redis’s high efficiency and performance, utilizing a single-threaded, event-driven architecture with I/O multiplexing (kqueue/epoll) to support concurrent client connections and blocking operations.
@@ -102,6 +104,7 @@ redis-cli -h localhost -p 6379
 ```
 
 > Yes, I am reinventing the wheel. But at least it’s not in JavaScript.
+
 
 
 
