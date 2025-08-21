@@ -14,7 +14,7 @@ public:
   explicit ClientHandler(int client_fd);
   int get_fd() const { return m_client_fd.get(); };
 
-  void handle_read(CommandDispatcher &dispatcher);
+  ssize_t handle_read(CommandDispatcher &dispatcher);
   void handle_reprocess(CommandDispatcher &dispatcher);
 
   // Transactions

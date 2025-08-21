@@ -9,7 +9,7 @@
 
 ClientHandler::ClientHandler(int client_fd) : m_client_fd(client_fd) {}
 
-void ClientHandler::handle_read(CommandDispatcher &dispatcher)
+ssize_t ClientHandler::handle_read(CommandDispatcher &dispatcher)
 {
   constexpr size_t BUFFER_SIZE = 4096;
   char buffer[BUFFER_SIZE];
@@ -20,7 +20,7 @@ void ClientHandler::handle_read(CommandDispatcher &dispatcher)
   // 0 bytes received also indicates disconnection
   // So we will simply return and let main handle the clean up
   if (bytes_received <= 0)
-    return;
+    return bytes_received;
 
   m_parser.feed(buffer, bytes_received);
   RESPValue value = m_parser.parse();
@@ -29,7 +29,7 @@ void ClientHandler::handle_read(CommandDispatcher &dispatcher)
   {
     std::string response = "-" + value.str + "\r\n";
     queue_message(response);
-    return;
+    return bytes_received;
   }
 
   std::string cmd_name = to_upper(value.array[0].str);
@@ -41,7 +41,7 @@ void ClientHandler::handle_read(CommandDispatcher &dispatcher)
     if (allowed.find(cmd_name) == allowed.end())
     {
       queue_message(RESPSerializer::serialize(RESPValue::Error("ERR Can't execute '" + cmd_name + "' in subscribed mode")));
-      return;
+      return bytes_received;
     }
   }
 
@@ -50,7 +50,7 @@ void ClientHandler::handle_read(CommandDispatcher &dispatcher)
   {
     queue_command(value);
     queue_message(RESPSerializer::serialize(RESPValue::SimpleString("QUEUED")));
-    return;
+    return bytes_received;
   }
 
   RESPValue result = dispatcher.dispatch(value, *this);
@@ -62,10 +62,11 @@ void ClientHandler::handle_read(CommandDispatcher &dispatcher)
   {
     std::cout << "\033[33m[Client " << get_fd() << "] Blocked\033[0m\n";
     m_blocked_command = std::move(result.array[1]);
-    return;
+    return bytes_received;
   }
 
   queue_message(RESPSerializer::serialize(result));
+  return bytes_received;
 }
 
 void ClientHandler::handle_reprocess(CommandDispatcher &dispatcher)

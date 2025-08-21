@@ -103,7 +103,16 @@ void EpollEventLoop::run(SocketRAII &server_socket,
         auto it = clients.find(event_fd);
         if (it != clients.end())
         {
-          it->second.handle_read(dispatcher);
+          ssize_t n = it->second.handle_read(dispatcher);
+          if (n <= 0)
+          {
+            std::cout << "\033[33m[Client " << event_fd << "] Disconnected\033[0m\n";
+
+            pubsub_manager.unsubscribe_all(&it->second);
+            blocking_manager.unblock_client(event_fd);
+            epoll_ctl(event_queue_fd, EPOLL_CTL_DEL, event_fd, nullptr);
+            clients.erase(event_fd);
+          }
         }
       }
       else if (events[i].events & EPOLLOUT)
