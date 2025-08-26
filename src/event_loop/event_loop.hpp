@@ -6,6 +6,7 @@
 #include "../pubsub/pubsub_manager.hpp"
 #include "../socket/socket.hpp"
 #include <map>
+#include <memory>
 #include <atomic>
 
 class EventLoop
@@ -23,5 +24,5 @@ public:
       std::atomic<bool> &running) = 0;
 
   // Factory function to create the correct loop for the current platform
-  static EventLoop *create();
+  static std::unique_ptr<EventLoop> create();
 };

@@ -6,12 +6,12 @@
 #include "epoll_event_loop.hpp"
 #endif
 
-EventLoop *EventLoop::create()
+std::unique_ptr<EventLoop> EventLoop::create()
 {
 #ifdef __APPLE__
-  return new KqueueEventLoop();
+  return std::make_unique<KqueueEventLoop>();
 #elif __linux__
-  return new EpollEventLoop();
+  return std::make_unique<EpollEventLoop>();
 #else
   return nullptr;
 #endif

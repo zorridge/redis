@@ -46,7 +46,7 @@ int main(int argc, char *argv[])
   CommandDispatcher dispatcher(store, blocking_manager, config, pubsub_manager);
   commands::register_all_commands(dispatcher);
 
-  std::unique_ptr<EventLoop> event_loop(EventLoop::create());
+  auto event_loop = EventLoop::create();
   if (!event_loop)
   {
     std::cerr << "Failed to create event loop for this platform." << std::endl;
