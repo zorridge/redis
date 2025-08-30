@@ -60,7 +60,6 @@ void EpollEventLoop::run(SocketRAII &server_socket,
     {
       int event_fd = events[i].data.fd;
 
-      // With epoll, disconnection is often signaled by EPOLLHUP (hang-up) or EPOLLERR
       if (events[i].events & (EPOLLHUP | EPOLLERR))
       {
         std::cout << "\033[33m[Client " << event_fd << "] Disconnected\033[0m\n";
@@ -89,9 +88,10 @@ void EpollEventLoop::run(SocketRAII &server_socket,
         }
 
         // Add the new client to epoll to watch for read events
-        event.events = EPOLLIN;
-        event.data.fd = client_raw_fd;
-        epoll_ctl(event_queue_fd, EPOLL_CTL_ADD, client_raw_fd, &event);
+        struct epoll_event ev;
+        ev.events = EPOLLIN;
+        ev.data.fd = client_raw_fd;
+        epoll_ctl(event_queue_fd, EPOLL_CTL_ADD, client_raw_fd, &ev);
 
         // Create a handler for this client
         clients.emplace(client_raw_fd, ClientHandler(client_raw_fd));
